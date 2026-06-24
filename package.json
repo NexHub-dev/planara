@@ -1,0 +1,19 @@
+{
+  "name": "planara",
+  "version": "0.1.0",
+  "private": false,
+  "license": "SEE LICENSE IN LICENSE",
+  "description": "Self-hosted project and changelog board with custom branding, custom statuses, custom roles and API access. Node.js only, English and German.",
+  "homepage": "https://planara.nexhub.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NexHub-dev/planara.git"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

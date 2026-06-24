@@ -1,0 +1,26 @@
+[Unit]
+Description=Planara
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=planara
+Group=planara
+WorkingDirectory=/opt/planara
+EnvironmentFile=/opt/planara/.env
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=4574
+ExecStart=/usr/bin/node /opt/planara/server.js
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/planara/data /opt/planara/uploads
+
+[Install]
+WantedBy=multi-user.target

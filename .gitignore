@@ -1,0 +1,8 @@
+.env
+node_modules/
+data/*.json
+data/*.tmp
+uploads/tasks/*
+!uploads/tasks/.gitkeep
+uploads/reports/*
+!uploads/reports/.gitkeep

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#090b10" />
+    <meta name="darkreader-lock" />
+    <title>Planara</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/branding/planara-mark.svg" />
+    <link rel="apple-touch-icon" href="/assets/branding/planara-apple-touch.png" />
+    <link rel="stylesheet" href="/assets/fontawesome/css/all.min.css" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="ambient" aria-hidden="true"></div>
+    <div id="app">
+      <div class="boot-screen">
+        <img class="brand-logo large" src="/assets/branding/planara-mark.svg" alt="Planara" />
+        <div class="boot-line"><span></span></div>
+      </div>
+    </div>
+
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+    <dialog id="modal" class="modal">
+      <div class="modal-shell">
+        <button class="icon-button modal-close" data-close-modal aria-label="Dialog schließen">×</button>
+        <div id="modal-content"></div>
+      </div>
+    </dialog>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
