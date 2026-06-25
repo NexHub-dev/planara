@@ -188,10 +188,11 @@ sudo systemctl restart planara
 
 ## License
 
-Planara is licensed under the **PolyForm Noncommercial License 1.0.0** - see
-[LICENSE](LICENSE). You may self-host, modify and share it for any
-**noncommercial** purpose. **Selling the software, selling access to it, or any
-other commercial use is not permitted.**
+Planara is **source-available** under the [Planara License](LICENSE). You may
+self-host, modify, share and use it for **any purpose, including commercial use**
+- run it in your business and even charge for services you provide with it. The
+**one restriction: you may not sell Planara itself.** Selling, reselling, renting
+or sublicensing the software for a fee is not allowed.
 
 Bundled third-party assets (Font Awesome Free, Inter) keep their own permissive
 licenses - see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
