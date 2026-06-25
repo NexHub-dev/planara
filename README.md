@@ -46,6 +46,7 @@ Copy `.env.example` to `.env` and adjust the values:
 | `PORT` | `4574` | Port the server listens on. |
 | `NODE_ENV` | `production` | Use `production` for live deployments (enables secure cookies). |
 | `LOCALE` | `en` | Interface language. `en` for English, `de` for German. |
+| `TRUST_PROXY` | `false` | Set to `true` when running behind a TLS-terminating proxy such as Cloudflare, Apache or Nginx. Session cookies are then marked `Secure` and the real client IP is read from the `CF-Connecting-IP` / `X-Forwarded-For` headers. |
 | `DISCORD_CLIENT_ID` | empty | Optional. Enables the "Continue with Discord" button. |
 | `DISCORD_CLIENT_SECRET` | empty | Optional. Discord OAuth secret. |
 | `DISCORD_REDIRECT_URI` | empty | Optional. Must match the redirect set in the Discord developer portal, e.g. `https://your-domain/auth/discord/callback`. |
@@ -166,9 +167,12 @@ curl -H "Authorization: Bearer plnr_xxxxxxxx" https://your-domain/api/tasks
 ```
 
 - Read tokens may call `GET` endpoints (for example `/api/bootstrap`,
-  `/api/tasks`, `/api/statuses`, `/api/branding`).
-- Read/write tokens may additionally create and update tasks, ideas, bugs and
-  changelog entries.
+  `/api/tasks`, `/api/statuses`, `/api/branding`, `/api/ideas`, `/api/bugs`).
+- `GET /api/ideas` and `GET /api/bugs` return each entry together with its
+  current state: `converted` (whether a task was created from it) and
+  `taskStatus` (the linked task's status, or `null`).
+- Read/write tokens may additionally create ideas and bugs (`POST /api/ideas`,
+  `POST /api/bugs`) and create/update tasks and changelog entries.
 - Administrative configuration (roles, branding, statuses, tokens) is reserved
   for signed-in users with the matching permission and cannot be changed through
   a token.

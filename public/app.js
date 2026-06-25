@@ -1493,7 +1493,7 @@ function renderShell() {
             <button class="button ghost tutorial-restart" data-action="start-tutorial"><span aria-hidden="true">?</span><span class="tutorial-label">${t("top.tutorial")}</span></button>
           </div>
         </header>
-        <div class="content">${renderPage()}</div>
+        <div class="content" data-page="${state.page}">${renderPage()}</div>
       </main>
     </div>
   `;
@@ -2253,7 +2253,7 @@ function renderUsers() {
               </div>
               <span class="status-text ${user.approved ? "" : "pending"}">${user.approved ? "Freigeschaltet" : "Wartet auf Freigabe"}</span>
               <div class="user-actions">
-                <button class="button ghost" data-action="manage-user" data-id="${user.id}">${user.approved ? "Edit access" : "Freischalten"}</button>
+                <button class="button ghost" data-action="manage-user" data-id="${user.id}">${user.approved ? "Edit access" : "Approve"}</button>
               </div>
             </div>
           `;
@@ -3059,16 +3059,35 @@ function showUserForm(user) {
       <div id="permission-preview" class="task-detail-roadmap"></div>
       <div class="modal-actions">
         ${
-          user.approved && user.id !== state.me.id
-            ? `<button type="button" class="button danger" data-action="revoke-user" data-id="${user.id}">Zugriff entziehen</button>`
+          user.id !== state.me.id
+            ? `<button type="button" class="button danger" data-action="delete-user" data-id="${user.id}">${user.approved ? "Delete user" : "Reject request"}</button>`
             : ""
         }
-        <button type="submit" class="button primary">${user.approved ? "Speichern" : "Freischalten"}</button>
+        ${
+          user.approved && user.id !== state.me.id
+            ? `<button type="button" class="button ghost danger-text" data-action="revoke-user" data-id="${user.id}">Revoke access</button>`
+            : ""
+        }
+        <button type="submit" class="button primary">${user.approved ? "Save" : "Approve"}</button>
       </div>
       <input type="hidden" name="userId" value="${user.id}" />
     </form>
   `);
   renderPermissionPreview();
+}
+
+function showDeleteUserConfirm(user) {
+  if (!user) return;
+  openModal(`
+    <div class="confirm-dialog">
+      <h2>${user.approved ? "Delete user?" : "Reject request?"}</h2>
+      <p class="modal-subtitle"><strong>${escapeHtml(user.displayName)}</strong> will be permanently removed. This action cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="button ghost" data-close-modal>Cancel</button>
+        <button class="button danger" data-action="confirm-delete-user" data-id="${user.id}">${user.approved ? "Delete" : "Reject"}</button>
+      </div>
+    </div>
+  `);
 }
 
 function showAreaForm(area = null) {
@@ -3553,6 +3572,13 @@ document.addEventListener("click", async (event) => {
       closeModal();
       await refreshData();
       toast("Access was revoked.");
+    } else if (action === "delete-user") {
+      showDeleteUserConfirm(state.users.find((item) => item.id === button.dataset.id));
+    } else if (action === "confirm-delete-user") {
+      await api(`/api/users/${button.dataset.id}`, { method: "DELETE" });
+      closeModal();
+      await refreshData();
+      toast("User was removed.");
     } else if (action === "push-changelog") {
       showPushForm();
     } else if (action === "delete-status") {

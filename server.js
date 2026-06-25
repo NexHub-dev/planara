@@ -19,6 +19,21 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const APP_LOCALE = String(process.env.LOCALE || "en").trim().toLowerCase().startsWith("de")
   ? "de"
   : "en";
+// Cloudflare / reverse-proxy support: when the app runs behind a TLS-terminating
+// proxy (Cloudflare, Apache, Nginx), set TRUST_PROXY=true (or CLOUDFLARE=true) so
+// session cookies are marked Secure even though the proxy talks to the app over HTTP.
+const TRUST_PROXY = process.env.TRUST_PROXY === "true" || process.env.CLOUDFLARE === "true";
+const SECURE_COOKIES = IS_PRODUCTION || TRUST_PROXY;
+
+function clientIp(req) {
+  if (TRUST_PROXY) {
+    const cf = req.headers["cf-connecting-ip"];
+    if (cf) return String(cf).trim();
+    const forwarded = req.headers["x-forwarded-for"];
+    if (forwarded) return String(forwarded).split(",")[0].trim();
+  }
+  return req.socket?.remoteAddress || "";
+}
 const SESSION_COOKIE = "vlc_session";
 const taskProjectTypes = new Set(["kleinprojekt", "mittelprojekt", "grossprojekt"]);
 
@@ -308,7 +323,7 @@ async function setSession(res, userId, remember = false) {
     expiresAt: now + maxAgeSeconds * 1000
   });
   await writeJson("sessions", activeSessions);
-  const secure = IS_PRODUCTION ? "; Secure" : "";
+  const secure = SECURE_COOKIES ? "; Secure" : "";
   const persistence = remember ? `; Max-Age=${maxAgeSeconds}` : "";
   res.setHeader(
     "Set-Cookie",
@@ -328,7 +343,7 @@ async function updateSessionPersistence(req, res, remember) {
   session.persistent = Boolean(remember);
   session.expiresAt = Date.now() + maxAgeSeconds * 1000;
   await writeJson("sessions", storedSessions);
-  const secure = IS_PRODUCTION ? "; Secure" : "";
+  const secure = SECURE_COOKIES ? "; Secure" : "";
   const persistence = remember ? `; Max-Age=${maxAgeSeconds}` : "";
   res.setHeader(
     "Set-Cookie",
@@ -348,7 +363,7 @@ async function clearSession(req, res) {
   }
   res.setHeader(
     "Set-Cookie",
-    `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${IS_PRODUCTION ? "; Secure" : ""}`
+    `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${SECURE_COOKIES ? "; Secure" : ""}`
   );
 }
 
@@ -668,6 +683,16 @@ function defaultStatusId(statuses) {
 
 function publicStatuses(statuses) {
   return [...statuses].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+function withSourceStatus(record, tasks) {
+  const task = record.taskId ? tasks.find((item) => item.id === record.taskId) : null;
+  return {
+    ...record,
+    converted: Boolean(record.taskId),
+    taskStatus: task ? task.status : null,
+    taskTitle: task ? task.title : null
+  };
 }
 
 async function getBranding() {
@@ -1502,6 +1527,36 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (userMatch && req.method === "DELETE") {
+    if (!requirePermission(user, "manage_users", res)) return;
+    if (userMatch[1] === user.id) {
+      sendJson(res, 409, { error: "Du kannst dich nicht selbst loeschen." });
+      return;
+    }
+    const [users, sessions] = await Promise.all([readJson("users"), readJson("sessions")]);
+    const index = users.findIndex((item) => item.id === userMatch[1]);
+    if (index < 0) {
+      sendJson(res, 404, { error: "Nutzer nicht gefunden." });
+      return;
+    }
+    if (users[index].isAdmin) {
+      sendJson(res, 409, { error: "Ein Administrator kann nicht geloescht werden." });
+      return;
+    }
+    users.splice(index, 1);
+    await writeJson("users", users);
+    await writeJson("sessions", sessions.filter((session) => session.userId !== userMatch[1]));
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/ideas") {
+    if (!requirePermission(user, "view_app", res)) return;
+    const [ideas, tasks] = await Promise.all([readJson("ideas"), readJson("tasks")]);
+    sendJson(res, 200, { ideas: ideas.map((idea) => withSourceStatus(idea, tasks)) });
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/ideas") {
     const body = await readBody(req);
     const now = new Date().toISOString();
@@ -1520,6 +1575,13 @@ async function handleApi(req, res, url) {
     ideas.unshift(idea);
     await writeJson("ideas", ideas);
     sendJson(res, 201, { idea });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/bugs") {
+    if (!requirePermission(user, "view_app", res)) return;
+    const [bugs, tasks] = await Promise.all([readJson("bugs"), readJson("tasks")]);
+    sendJson(res, 200, { bugs: bugs.map((bug) => withSourceStatus(bug, tasks)) });
     return;
   }
 
