@@ -25,6 +25,89 @@ const APP_LOCALE = String(process.env.LOCALE || "en").trim().toLowerCase().start
 const TRUST_PROXY = process.env.TRUST_PROXY === "true" || process.env.CLOUDFLARE === "true";
 const SECURE_COOKIES = IS_PRODUCTION || TRUST_PROXY;
 
+// Optional Discord bot token. When set, the current user's Discord avatar is
+// refreshed on page load (throttled), so a changed profile picture shows up
+// without the user having to sign in again.
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || "";
+
+// Update notice: compare the locally installed version against the latest
+// GitHub release. Disable with UPDATE_CHECK=false, point at a fork with UPDATE_REPO.
+const APP_VERSION = (() => {
+  try {
+    return require("./package.json").version || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
+const UPDATE_REPO = process.env.UPDATE_REPO || "NexHub-dev/planara";
+const UPDATE_CHECK_ENABLED = process.env.UPDATE_CHECK !== "false";
+const updateState = {
+  current: APP_VERSION,
+  latest: APP_VERSION,
+  available: false,
+  url: `https://github.com/${UPDATE_REPO}/releases`,
+  checkedAt: 0
+};
+
+function compareSemver(a, b) {
+  const pa = String(a).replace(/^v/, "").split(".").map((part) => parseInt(part, 10) || 0);
+  const pb = String(b).replace(/^v/, "").split(".").map((part) => parseInt(part, 10) || 0);
+  for (let i = 0; i < 3; i += 1) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+  }
+  return 0;
+}
+
+async function checkForUpdate() {
+  if (!UPDATE_CHECK_ENABLED) return updateState;
+  if (Date.now() - updateState.checkedAt < 6 * 60 * 60 * 1000) return updateState;
+  updateState.checkedAt = Date.now();
+  try {
+    const response = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
+      headers: { "User-Agent": "Planara", Accept: "application/vnd.github+json" }
+    });
+    if (!response.ok) return updateState;
+    const data = await response.json();
+    const latest = String(data.tag_name || "").replace(/^v/, "");
+    if (latest) {
+      updateState.latest = latest;
+      updateState.available = compareSemver(latest, APP_VERSION) > 0;
+      if (data.html_url) updateState.url = data.html_url;
+    }
+  } catch {
+    // network problems should never break the app; keep the previous state
+  }
+  return updateState;
+}
+
+async function refreshDiscordAvatar(currentUser) {
+  if (!DISCORD_BOT_TOKEN || !currentUser || !currentUser.discordId) return currentUser;
+  const last = currentUser.avatarCheckedAt ? Date.parse(currentUser.avatarCheckedAt) : 0;
+  if (Date.now() - last < 30 * 60 * 1000) return currentUser;
+  try {
+    const response = await fetch(`https://discord.com/api/v10/users/${currentUser.discordId}`, {
+      headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` }
+    });
+    if (!response.ok) return currentUser;
+    const profile = await response.json();
+    const avatar = profile.avatar
+      ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png?size=128`
+      : `https://cdn.discordapp.com/embed/avatars/${Number(profile.id) % 6}.png`;
+    const users = await readJson("users");
+    const stored = users.find((item) => item.id === currentUser.id);
+    if (!stored) return currentUser;
+    stored.avatarCheckedAt = new Date().toISOString();
+    if (stored.avatar !== avatar) stored.avatar = avatar;
+    if (profile.global_name || profile.username) {
+      stored.displayName = profile.global_name || profile.username;
+    }
+    await writeJson("users", users);
+    return stored;
+  } catch {
+    return currentUser;
+  }
+}
+
 function clientIp(req) {
   if (TRUST_PROXY) {
     const cf = req.headers["cf-connecting-ip"];
@@ -1046,11 +1129,9 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/me") {
-    const [user, users, branding] = await Promise.all([
-      getCurrentUser(req),
-      readJson("users"),
-      getBranding()
-    ]);
+    let user = await getCurrentUser(req);
+    if (user) user = await refreshDiscordAvatar(user);
+    const [users, branding] = await Promise.all([readJson("users"), getBranding()]);
     sendJson(res, 200, {
       user: user ? publicUser(user) : null,
       branding,
@@ -1151,6 +1232,12 @@ async function handleApi(req, res, url) {
       statuses: publicStatuses(statuses),
       branding,
       locale: APP_LOCALE,
+      update: {
+        current: updateState.current,
+        latest: updateState.latest,
+        available: updateState.available,
+        url: updateState.url
+      },
       apiTokens: hasPermission(user, "manage_settings") ? (await readJson("apiTokens")).map(publicApiToken) : [],
       permissionCatalog,
       settings: {
@@ -2248,6 +2335,10 @@ async function startServer() {
     console.log(`Planara laeuft auf http://${HOST}:${PORT}`);
     if (!IS_PRODUCTION) console.log("Lokaler Demo-Login ist aktiviert.");
   });
+  if (UPDATE_CHECK_ENABLED) {
+    checkForUpdate();
+    setInterval(checkForUpdate, 6 * 60 * 60 * 1000).unref();
+  }
 }
 
 startServer().catch((error) => {

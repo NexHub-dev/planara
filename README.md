@@ -52,6 +52,9 @@ Copy `.env.example` to `.env` and adjust the values:
 | `DISCORD_REDIRECT_URI` | empty | Optional. Must match the redirect set in the Discord developer portal, e.g. `https://your-domain/auth/discord/callback`. |
 | `ADMIN_DISCORD_IDS` | empty | Optional. Comma separated Discord IDs that become administrators on first Discord login. |
 | `DISCORD_WEBHOOK_URL` | empty | Optional. Target for published changelogs. |
+| `DISCORD_BOT_TOKEN` | empty | Optional. When set, a Discord user's avatar is refreshed on page load (throttled to once every 30 minutes), so a changed profile picture appears without signing in again. Without it, avatars still refresh on each Discord login. |
+| `UPDATE_CHECK` | `true` | Set to `false` to disable the "update available" notice. |
+| `UPDATE_REPO` | `NexHub-dev/planara` | Repository checked for new releases. Point it at your fork if you maintain one. |
 
 Discord is fully optional. With an empty `.env`, Planara runs entirely on local
 accounts and ships no credentials.
@@ -177,6 +180,19 @@ curl -H "Authorization: Bearer plnr_xxxxxxxx" https://your-domain/api/tasks
   for signed-in users with the matching permission and cannot be changed through
   a token.
 
+When a newer release is published on GitHub, signed-in administrators see an
+"update available" badge in the top bar that links to the release notes. You can
+turn this off with `UPDATE_CHECK=false`.
+
+## Guides
+
+Step-by-step guides for common setups live in [docs/](docs/):
+
+- [Hosting behind a Cloudflare Tunnel](docs/cloudflare-tunnel.md) - give a
+  locally running Planara a fixed public HTTPS address without port forwarding.
+- [Automation recipe with n8n, Telegram and email](docs/automation-recipe.md) -
+  turn incoming requests into board cards and Telegram alerts using the API.
+
 ## Updating
 
 ```bash
@@ -185,6 +201,12 @@ sudo chown -R root:planara /opt/planara
 sudo chown -R planara:planara /opt/planara/data /opt/planara/uploads
 sudo systemctl restart planara
 ```
+
+## Credits
+
+Thanks to **Tobse** ([kicodebyts.com](https://www.kicodebyts.com/)) for the
+original Cloudflare Tunnel and automation guides that the documents in
+[docs/](docs/) are based on.
 
 ## License
 

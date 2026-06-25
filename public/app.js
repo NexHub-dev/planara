@@ -33,7 +33,8 @@ const state = {
   locale: "en",
   localAuth: true,
   registrationOpen: true,
-  setupRequired: false
+  setupRequired: false,
+  update: null
 };
 
 const dragState = {
@@ -160,6 +161,7 @@ const translations = {
     "nav.settings": "Settings",
     "top.tutorial": "Tutorial",
     "top.refresh": "Refresh",
+    "top.update": "Update available",
     "pending.eyebrow": "Access pending",
     "pending.title": "Approval required",
     "pending.text": "Your account was created successfully. An administrator still needs to assign you a role before you can open the workspace.",
@@ -264,6 +266,7 @@ const translations = {
     "nav.settings": "Einstellungen",
     "top.tutorial": "Tutorial",
     "top.refresh": "Aktualisieren",
+    "top.update": "Update verfügbar",
     "pending.eyebrow": "Zugriff ausstehend",
     "pending.title": "Freischaltung erforderlich",
     "pending.text": "Dein Account wurde erfolgreich angelegt. Ein Administrator muss dich noch einer Gruppe zuweisen, bevor du den Workspace öffnen kannst.",
@@ -1172,7 +1175,8 @@ function iconSvg(name) {
     menu: "fa-bars",
     drag: "fa-grip-vertical",
     plus: "fa-plus",
-    settings: "fa-gear"
+    settings: "fa-gear",
+    rocket: "fa-rocket"
   };
   const cls = icons[name];
   return cls ? `<i class="fa-solid ${cls}" aria-hidden="true"></i>` : "";
@@ -1490,10 +1494,15 @@ function renderShell() {
             <span>${t("nav.workspace")}</span><span>/</span><strong>${pageTitle()}</strong>
           </div>
           <div class="topbar-actions">
+            ${
+              state.update && state.update.available && hasPermission("manage_settings")
+                ? `<a class="update-pill" href="${escapeHtml(state.update.url)}" target="_blank" rel="noopener" title="${escapeHtml(brandName())} ${escapeHtml(state.update.latest)}">${iconSvg("rocket")}<span>${t("top.update")} ${escapeHtml(state.update.latest)}</span></a>`
+                : ""
+            }
             <button class="button ghost tutorial-restart" data-action="start-tutorial"><span aria-hidden="true">?</span><span class="tutorial-label">${t("top.tutorial")}</span></button>
           </div>
         </header>
-        <div class="content" data-page="${state.page}">${renderPage()}</div>
+        <div class="content" data-view="${state.page}">${renderPage()}</div>
       </main>
     </div>
   `;
