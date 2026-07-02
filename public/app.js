@@ -3530,6 +3530,17 @@ document.addEventListener("pointercancel", (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  // Mobile: tapping outside the open navigation drawer closes it.
+  if (
+    document.body.classList.contains("menu-open") &&
+    window.matchMedia("(max-width: 760px)").matches &&
+    !event.target.closest(".sidebar") &&
+    !event.target.closest(".mobile-menu")
+  ) {
+    document.body.classList.remove("menu-open");
+    return;
+  }
+
   const pageButton = event.target.closest("[data-page]");
   if (pageButton) {
     state.page = pageButton.dataset.page;
