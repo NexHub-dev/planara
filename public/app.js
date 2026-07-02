@@ -32,6 +32,7 @@ const state = {
   apiTokens: [],
   env: [],
   envWritable: false,
+  changelogEmbed: {},
   locale: "en",
   localAuth: true,
   registrationOpen: true,
@@ -190,6 +191,22 @@ const translations = {
     "set.env_saved_restart": "Saved. Restart the service for all changes to take effect.",
     "set.env_restart_tag": "restart",
     "set.env_secret_ph": "leave blank to keep",
+    "set.embed": "Changelog embed",
+    "set.embed_sub": "Discord message",
+    "set.embed_note": "Customize the Discord changelog embed. Placeholders: {date}, {time}, {user}.",
+    "set.embed_username": "Sender name",
+    "set.embed_color": "Embed color",
+    "set.embed_title": "Title",
+    "set.embed_footer": "Footer",
+    "set.embed_showrestart": "Show restart time",
+    "set.embed_restarttext": "Restart text",
+    "set.embed_added": "Label: added",
+    "set.embed_changed": "Label: changed",
+    "set.embed_removed": "Label: removed",
+    "set.embed_empty": "Empty text",
+    "set.embed_save": "Save embed",
+    "set.embed_saved": "Changelog embed saved.",
+    "push.no_restart": "No restart time is sent (disabled in the embed settings).",
     "set.statuses": "Task statuses",
     "set.custom_status": "Custom status",
     "set.flag_default": "Default",
@@ -304,6 +321,22 @@ const translations = {
     "set.env_saved_restart": "Gespeichert. Starte den Dienst neu, damit alle Änderungen wirken.",
     "set.env_restart_tag": "Neustart",
     "set.env_secret_ph": "leer lassen = unverändert",
+    "set.embed": "Changelog-Embed",
+    "set.embed_sub": "Discord-Nachricht",
+    "set.embed_note": "Passe das Discord-Changelog-Embed an. Platzhalter: {date}, {time}, {user}.",
+    "set.embed_username": "Absender-Name",
+    "set.embed_color": "Embed-Farbe",
+    "set.embed_title": "Titel",
+    "set.embed_footer": "Footer",
+    "set.embed_showrestart": "Restart-Zeit anzeigen",
+    "set.embed_restarttext": "Restart-Text",
+    "set.embed_added": "Label: Hinzugefügt",
+    "set.embed_changed": "Label: Bearbeitet",
+    "set.embed_removed": "Label: Entfernt",
+    "set.embed_empty": "Leer-Text",
+    "set.embed_save": "Embed speichern",
+    "set.embed_saved": "Changelog-Embed gespeichert.",
+    "push.no_restart": "Es wird keine Restart-Zeit gesendet (im Embed deaktiviert).",
     "set.statuses": "Aufgaben-Status",
     "set.custom_status": "Custom Status",
     "set.flag_default": "Standard",
@@ -1556,6 +1589,7 @@ function renderPage() {
 
 function renderSettings() {
   const branding = state.branding || {};
+  const embed = state.changelogEmbed || {};
   const statuses = [...(state.statuses || [])].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0)
   );
@@ -1655,6 +1689,24 @@ function renderSettings() {
         <form id="env-form" class="settings-form env-form">
           ${(state.env || []).map(renderEnvField).join("")}
           <button type="submit" class="button primary env-save">${t("set.env_save")}</button>
+        </form>
+      </div>
+
+      <div class="panel settings-panel env-panel">
+        <div class="panel-head"><h2>${t("set.embed")}</h2><span>${t("set.embed_sub")}</span></div>
+        <p class="panel-note">${t("set.embed_note")}</p>
+        <form id="embed-form" class="settings-form env-form">
+          <label class="field"><span>${t("set.embed_username")}</span><input name="username" maxlength="80" value="${escapeHtml(embed.username || "")}" placeholder="${escapeHtml(brandName())}" /></label>
+          <label class="field"><span>${t("set.embed_color")}</span><input name="color" type="color" value="${escapeHtml(embed.color || "#8b5cf6")}" /></label>
+          <label class="field"><span>${t("set.embed_title")}</span><input name="title" maxlength="200" value="${escapeHtml(embed.title || "")}" placeholder="Changelog vom {date}" /></label>
+          <label class="field"><span>${t("set.embed_footer")}</span><input name="footer" maxlength="200" value="${escapeHtml(embed.footer || "")}" placeholder="Freigegeben von {user}" /></label>
+          <label class="field inline-check env-check"><input type="checkbox" name="showRestart" ${embed.showRestart !== false ? "checked" : ""} /> <span>${t("set.embed_showrestart")}</span></label>
+          <label class="field"><span>${t("set.embed_restarttext")}</span><input name="restartText" maxlength="200" value="${escapeHtml(embed.restartText || "")}" placeholder="Changelog gilt ab dem Restart um {time}" /></label>
+          <label class="field"><span>${t("set.embed_added")}</span><input name="labelAdded" maxlength="60" value="${escapeHtml(embed.labelAdded || "")}" placeholder="Hinzugefügt" /></label>
+          <label class="field"><span>${t("set.embed_changed")}</span><input name="labelChanged" maxlength="60" value="${escapeHtml(embed.labelChanged || "")}" placeholder="Bearbeitet" /></label>
+          <label class="field"><span>${t("set.embed_removed")}</span><input name="labelRemoved" maxlength="60" value="${escapeHtml(embed.labelRemoved || "")}" placeholder="Entfernt" /></label>
+          <label class="field"><span>${t("set.embed_empty")}</span><input name="emptyText" maxlength="60" value="${escapeHtml(embed.emptyText || "")}" placeholder="nichts" /></label>
+          <button type="submit" class="button primary env-save">${t("set.embed_save")}</button>
         </form>
       </div>
     </section>
@@ -3281,15 +3333,20 @@ function showPushForm() {
   defaultDate.setMinutes(defaultDate.getMinutes() - defaultDate.getTimezoneOffset());
   const unpublished = state.changelogs.length;
   const pending = state.changelogs.filter((entry) => !entry.approved).length;
+  const showRestart = (state.changelogEmbed || {}).showRestart !== false;
   openModal(`
     <form id="push-form">
       <h2>Publish changelog</h2>
       <p class="modal-subtitle">${unpublished} entries are sent as a Discord embed and then moved to „Past changelogs“.</p>
-      <div class="field">
+      ${
+        showRestart
+          ? `<div class="field">
         <label for="effective-at">Changelog applies from the restart at</label>
         <input id="effective-at" name="effectiveAt" type="datetime-local" required value="${defaultDate.toISOString().slice(0, 16)}" />
         <span class="field-hint">Discord shows this time to every user in their local time zone.</span>
-      </div>
+      </div>`
+          : `<span class="field-hint">${t("push.no_restart")}</span>`
+      }
       ${
         state.settings.webhookConfigured
           ? ""
@@ -4017,9 +4074,11 @@ document.addEventListener("submit", async (event) => {
       await refreshData();
       toast(groupId ? "Role was updated." : "Role was created.");
     } else if (form.id === "push-form") {
+      const pushBody = {};
+      if (values.effectiveAt) pushBody.effectiveAt = new Date(values.effectiveAt).toISOString();
       await api("/api/changelogs/push", {
         method: "POST",
-        body: JSON.stringify({ effectiveAt: new Date(values.effectiveAt).toISOString() })
+        body: JSON.stringify(pushBody)
       });
       closeModal();
       await refreshData();
@@ -4063,6 +4122,24 @@ document.addEventListener("submit", async (event) => {
       });
       await refreshData();
       toast(result.restartRequired ? t("set.env_saved_restart") : t("set.env_saved"));
+    } else if (form.id === "embed-form") {
+      await api("/api/changelog-embed", {
+        method: "PATCH",
+        body: JSON.stringify({
+          username: values.username,
+          color: values.color,
+          title: values.title,
+          footer: values.footer,
+          showRestart: form.elements.showRestart.checked,
+          restartText: values.restartText,
+          labelAdded: values.labelAdded,
+          labelChanged: values.labelChanged,
+          labelRemoved: values.labelRemoved,
+          emptyText: values.emptyText
+        })
+      });
+      await refreshData();
+      toast(t("set.embed_saved"));
     }
   } catch (error) {
     toast(error.message, "error");

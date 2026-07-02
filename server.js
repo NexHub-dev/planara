@@ -232,6 +232,20 @@ const DEFAULT_BRANDING = {
   accentColor: "#1fd1c6"
 };
 
+// Configurable Discord changelog embed. Placeholders: {date} {time} {user}.
+const DEFAULT_CHANGELOG_EMBED = {
+  username: "",
+  color: "#8b5cf6",
+  title: "Changelog vom {date}",
+  footer: "Freigegeben von {user}",
+  showRestart: true,
+  restartText: "Changelog gilt ab dem Restart um {time}",
+  labelAdded: "Hinzugefügt",
+  labelChanged: "Bearbeitet",
+  labelRemoved: "Entfernt",
+  emptyText: "nichts"
+};
+
 const API_TOKEN_PREFIX = "plnr_";
 
 const DEFAULT_LEAD_GROUP_ID = "lead-developer";
@@ -878,6 +892,16 @@ async function getBranding() {
   return { ...DEFAULT_BRANDING, ...(settings.branding || {}) };
 }
 
+async function getChangelogEmbed() {
+  const settings = await readJson("settings");
+  return { ...DEFAULT_CHANGELOG_EMBED, ...(settings.changelogEmbed || {}) };
+}
+
+function hexToInt(hex) {
+  const match = /^#?([0-9a-f]{6})$/i.exec(String(hex || ""));
+  return match ? parseInt(match[1], 16) : 0x8b5cf6;
+}
+
 function findLeadGroup(groups) {
   return (
     groups.find((group) => group.id === DEFAULT_LEAD_GROUP_ID) ||
@@ -1336,6 +1360,7 @@ async function handleApi(req, res, url) {
       apiTokens: hasPermission(user, "manage_settings") ? (await readJson("apiTokens")).map(publicApiToken) : [],
       env: hasPermission(user, "manage_settings") ? await buildEnvFields() : [],
       envWritable: hasPermission(user, "manage_settings") ? await isEnvWritable() : false,
+      changelogEmbed: await getChangelogEmbed(),
       permissionCatalog,
       settings: {
         webhookConfigured: Boolean(process.env.DISCORD_WEBHOOK_URL),
@@ -1534,6 +1559,27 @@ async function handleApi(req, res, url) {
     settings.branding = next;
     await writeJson("settings", settings);
     sendJson(res, 200, { branding: next });
+    return;
+  }
+
+  if (req.method === "PATCH" && url.pathname === "/api/changelog-embed") {
+    if (!requirePermission(user, "manage_settings", res)) return;
+    const body = await readBody(req);
+    const settings = await readJson("settings");
+    const next = { ...DEFAULT_CHANGELOG_EMBED, ...(settings.changelogEmbed || {}) };
+    if (body.username !== undefined) next.username = sanitizeText(body.username, 80, false);
+    if (body.color !== undefined) next.color = sanitizeHexColor(body.color);
+    if (body.title !== undefined) next.title = sanitizeText(body.title, 200, false);
+    if (body.footer !== undefined) next.footer = sanitizeText(body.footer, 200, false);
+    if (body.showRestart !== undefined) next.showRestart = body.showRestart === true;
+    if (body.restartText !== undefined) next.restartText = sanitizeText(body.restartText, 200, false);
+    if (body.labelAdded !== undefined) next.labelAdded = sanitizeText(body.labelAdded, 60, false) || DEFAULT_CHANGELOG_EMBED.labelAdded;
+    if (body.labelChanged !== undefined) next.labelChanged = sanitizeText(body.labelChanged, 60, false) || DEFAULT_CHANGELOG_EMBED.labelChanged;
+    if (body.labelRemoved !== undefined) next.labelRemoved = sanitizeText(body.labelRemoved, 60, false) || DEFAULT_CHANGELOG_EMBED.labelRemoved;
+    if (body.emptyText !== undefined) next.emptyText = sanitizeText(body.emptyText, 60, false) || DEFAULT_CHANGELOG_EMBED.emptyText;
+    settings.changelogEmbed = next;
+    await writeJson("settings", settings);
+    sendJson(res, 200, { changelogEmbed: next });
     return;
   }
 
@@ -2132,7 +2178,7 @@ async function handleApi(req, res, url) {
     if (!requirePermission(user, "submit_changelog", res)) return;
     const body = await readBody(req);
     if (!["hinzugefuegt", "bearbeitet", "entfernt"].includes(body.type)) {
-      throw new Error("Ungueltiger Changelog-Typ.");
+      throw new Error("Ungültiger Changelog-Typ.");
     }
     const now = new Date().toISOString();
     const entry = {
@@ -2191,7 +2237,7 @@ async function handleApi(req, res, url) {
       return;
     }
     if (entry.publishedAt) {
-      sendJson(res, 409, { error: "Bereits veroeffentlichte Eintraege koennen nicht geloescht werden." });
+      sendJson(res, 409, { error: "Bereits veröffentlichte Einträge können nicht gelöscht werden." });
       return;
     }
     const mayDelete =
@@ -2212,45 +2258,62 @@ async function handleApi(req, res, url) {
     const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
     if (!webhookUrl) throw new Error("Der Discord-Webhook ist noch nicht konfiguriert.");
     const body = await readBody(req);
-    const effectiveDate = new Date(body.effectiveAt);
-    if (Number.isNaN(effectiveDate.getTime())) throw new Error("Bitte eine gueltige Restart-Zeit angeben.");
+    const embed = await getChangelogEmbed();
+    let effectiveDate = null;
+    if (embed.showRestart) {
+      effectiveDate = new Date(body.effectiveAt);
+      if (Number.isNaN(effectiveDate.getTime())) throw new Error("Bitte eine gültige Restart-Zeit angeben.");
+    }
     const changelogs = await readJson("changelogs");
     if (!changelogs.length) throw new Error("Der aktive Changelog ist leer.");
     const pendingEntries = changelogs.filter((entry) => !entry.approved);
     if (pendingEntries.length) {
       throw new Error(
-        `Vor dem Push muessen alle Eintraege freigegeben sein. Noch offen: ${pendingEntries.length}.`
+        `Vor dem Push müssen alle Einträge freigegeben sein. Noch offen: ${pendingEntries.length}.`
       );
     }
     const entries = [...changelogs];
 
     const labels = {
-      hinzugefuegt: "Hinzugefuegt",
-      bearbeitet: "Bearbeitet",
-      entfernt: "Entfernt"
+      hinzugefuegt: embed.labelAdded,
+      bearbeitet: embed.labelChanged,
+      entfernt: embed.labelRemoved
     };
     const sections = Object.keys(labels).map((type) => {
       const lines = entries
         .filter((entry) => entry.type === type)
         .map((entry) => `- **${entry.scriptName}** - ${entry.description}`);
-      return `**${labels[type]}:**\n${lines.length ? lines.join("\n") : "- nichts"}`;
+      return `**${labels[type]}:**\n${lines.length ? lines.join("\n") : `- ${embed.emptyText}`}`;
     });
-    const unix = Math.floor(effectiveDate.getTime() / 1000);
     const today = new Intl.DateTimeFormat("de-DE", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
       timeZone: "Europe/Berlin"
     }).format(new Date());
+    const publishedAt = new Date().toISOString();
+    const effectiveIso = effectiveDate ? effectiveDate.toISOString() : publishedAt;
+    const fillPlaceholders = (text) =>
+      String(text || "")
+        .replaceAll("{date}", today)
+        .replaceAll("{user}", user.displayName)
+        .replaceAll(
+          "{time}",
+          effectiveDate ? `<t:${Math.floor(effectiveDate.getTime() / 1000)}:F>` : ""
+        );
+    let description = sections.join("\n\n");
+    if (embed.showRestart && embed.restartText.trim()) {
+      description += `\n\n**${fillPlaceholders(embed.restartText)}**`;
+    }
     const payload = {
-      username: (await getBranding()).productName,
+      username: fillPlaceholders(embed.username) || (await getBranding()).productName,
       embeds: [
         {
-          title: `Changelog vom ${today}`,
-          color: 0x8b5cf6,
-          description: `${sections.join("\n\n")}\n\n**Changelog gilt ab dem Restart um <t:${unix}:F>**`,
-          footer: { text: `Freigegeben von ${user.displayName}` },
-          timestamp: effectiveDate.toISOString()
+          title: fillPlaceholders(embed.title),
+          color: hexToInt(embed.color),
+          description,
+          footer: { text: fillPlaceholders(embed.footer) },
+          timestamp: effectiveIso
         }
       ]
     };
@@ -2261,13 +2324,12 @@ async function handleApi(req, res, url) {
     });
     if (!webhookResponse.ok) throw new Error("Discord-Webhook konnte nicht gesendet werden.");
 
-    const publishedAt = new Date().toISOString();
     const archive = await readJson("changelogArchive");
     const archiveEntry = {
       id: crypto.randomUUID(),
-      title: `Changelog vom ${today}`,
+      title: fillPlaceholders(embed.title),
       publishedAt,
-      effectiveAt: effectiveDate.toISOString(),
+      effectiveAt: effectiveIso,
       publishedBy: user.id,
       publishedByName: user.displayName,
       entries: entries.map((entry) => ({ ...entry, publishedAt }))
@@ -2279,7 +2341,7 @@ async function handleApi(req, res, url) {
     settings.lastChangelogPush = {
       archiveId: archiveEntry.id,
       publishedAt,
-      effectiveAt: effectiveDate.toISOString(),
+      effectiveAt: effectiveIso,
       publishedBy: user.id,
       entryCount: entries.length
     };
