@@ -2395,10 +2395,17 @@ body.task-pointer-dragging {
   background: rgba(124, 58, 237, 0.08);
 }
 
-.permission-option input {
-  width: 15px;
-  height: 15px;
-  margin: 2px 0 0;
+.permission-option input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 1px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
   accent-color: var(--purple);
 }
 
@@ -2409,6 +2416,7 @@ body.task-pointer-dragging {
 }
 
 .permission-option span {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -2423,6 +2431,70 @@ body.task-pointer-dragging {
   color: var(--muted);
   font-size: 9px;
   line-height: 1.5;
+}
+
+.env-warning {
+  margin: 0 0 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.08);
+  color: #f59e0b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.env-restart {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  vertical-align: middle;
+}
+
+.env-panel {
+  grid-column: 1 / -1;
+}
+
+.env-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px 18px;
+  align-items: start;
+}
+
+.env-save {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.env-check {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  white-space: normal;
+}
+
+.permission-option input[type="checkbox"],
+.env-check input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  accent-color: var(--purple);
 }
 
 .empty {

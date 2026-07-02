@@ -108,6 +108,101 @@ async function refreshDiscordAvatar(currentUser) {
   }
 }
 
+// Environment values that administrators may edit from Settings. Only these keys
+// are ever read or written through the API; anything else in .env is untouched.
+const ENV_FILE = path.join(__dirname, ".env");
+const EDITABLE_ENV = [
+  { key: "LOCALE", type: "select", options: ["en", "de"], restart: true },
+  { key: "TRUST_PROXY", type: "boolean", restart: true },
+  { key: "UPDATE_CHECK", type: "boolean", restart: false },
+  { key: "UPDATE_REPO", type: "text", restart: false },
+  { key: "DISCORD_CLIENT_ID", type: "text", restart: false },
+  { key: "DISCORD_CLIENT_SECRET", type: "password", secret: true, restart: false },
+  { key: "DISCORD_REDIRECT_URI", type: "text", restart: false },
+  { key: "ADMIN_DISCORD_IDS", type: "text", restart: false },
+  { key: "DISCORD_WEBHOOK_URL", type: "password", secret: true, restart: false },
+  { key: "DISCORD_BOT_TOKEN", type: "password", secret: true, restart: true }
+];
+
+function parseEnvText(text) {
+  const map = new Map();
+  for (const rawLine of String(text).split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    map.set(key, value);
+  }
+  return map;
+}
+
+async function readEnvFile() {
+  try {
+    return await fsp.readFile(ENV_FILE, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function applyEnvUpdates(text, updates) {
+  const lines = String(text).split(/\r?\n/);
+  const seen = new Set();
+  const out = lines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return line;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) return line;
+    const key = trimmed.slice(0, eq).trim();
+    if (Object.prototype.hasOwnProperty.call(updates, key)) {
+      seen.add(key);
+      return `${key}=${updates[key]}`;
+    }
+    return line;
+  });
+  for (const [key, value] of Object.entries(updates)) {
+    if (!seen.has(key)) out.push(`${key}=${value}`);
+  }
+  return out.join("\n");
+}
+
+async function buildEnvFields() {
+  const current = parseEnvText(await readEnvFile());
+  return EDITABLE_ENV.map((item) => {
+    const raw = process.env[item.key] ?? current.get(item.key) ?? "";
+    const field = {
+      key: item.key,
+      type: item.type,
+      options: item.options || null,
+      secret: Boolean(item.secret),
+      restart: Boolean(item.restart)
+    };
+    if (item.secret) {
+      field.value = "";
+      field.hasValue = Boolean(raw);
+    } else {
+      field.value = raw;
+    }
+    return field;
+  });
+}
+
+async function isEnvWritable() {
+  try {
+    await fsp.access(ENV_FILE, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function clientIp(req) {
   if (TRUST_PROXY) {
     const cf = req.headers["cf-connecting-ip"];
@@ -1239,6 +1334,8 @@ async function handleApi(req, res, url) {
         url: updateState.url
       },
       apiTokens: hasPermission(user, "manage_settings") ? (await readJson("apiTokens")).map(publicApiToken) : [],
+      env: hasPermission(user, "manage_settings") ? await buildEnvFields() : [],
+      envWritable: hasPermission(user, "manage_settings") ? await isEnvWritable() : false,
       permissionCatalog,
       settings: {
         webhookConfigured: Boolean(process.env.DISCORD_WEBHOOK_URL),
@@ -1437,6 +1534,48 @@ async function handleApi(req, res, url) {
     settings.branding = next;
     await writeJson("settings", settings);
     sendJson(res, 200, { branding: next });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/env") {
+    if (!requirePermission(user, "manage_settings", res)) return;
+    sendJson(res, 200, { fields: await buildEnvFields(), envWritable: await isEnvWritable() });
+    return;
+  }
+
+  if (req.method === "PATCH" && url.pathname === "/api/env") {
+    if (!requirePermission(user, "manage_settings", res)) return;
+    const body = await readBody(req);
+    const incoming = body && typeof body.values === "object" && body.values ? body.values : {};
+    const updates = {};
+    let restartRequired = false;
+    for (const item of EDITABLE_ENV) {
+      if (!Object.prototype.hasOwnProperty.call(incoming, item.key)) continue;
+      let value = incoming[item.key];
+      if (item.type === "boolean") {
+        value = value === true || value === "true" ? "true" : "false";
+      } else {
+        value = value == null ? "" : String(value).replace(/[\r\n]/g, "").trim();
+      }
+      if (item.secret && value === "") continue;
+      updates[item.key] = value;
+      process.env[item.key] = value;
+      if (item.restart) restartRequired = true;
+    }
+    if (Object.keys(updates).length === 0) {
+      sendJson(res, 200, { ok: true, restartRequired: false });
+      return;
+    }
+    try {
+      const nextText = applyEnvUpdates(await readEnvFile(), updates);
+      await fsp.writeFile(ENV_FILE, nextText.endsWith("\n") ? nextText : nextText + "\n", "utf8");
+    } catch {
+      sendJson(res, 500, {
+        error: "Die .env-Datei konnte nicht geschrieben werden. Der Dienst braucht Schreibrechte auf die Datei."
+      });
+      return;
+    }
+    sendJson(res, 200, { ok: true, restartRequired });
     return;
   }
 

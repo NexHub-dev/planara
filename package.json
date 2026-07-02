@@ -1,6 +1,6 @@
 {
   "name": "planara",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": false,
   "license": "SEE LICENSE IN LICENSE",
   "description": "Self-hosted project and changelog board with custom branding, custom statuses, custom roles and API access. Node.js only, English and German.",

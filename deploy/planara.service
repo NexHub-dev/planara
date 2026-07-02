@@ -20,7 +20,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/planara/data /opt/planara/uploads
+ReadWritePaths=/opt/planara/data /opt/planara/uploads /opt/planara/.env
 
 [Install]
 WantedBy=multi-user.target

@@ -30,6 +30,8 @@ const state = {
   statuses: [],
   branding: {},
   apiTokens: [],
+  env: [],
+  envWritable: false,
   locale: "en",
   localAuth: true,
   registrationOpen: true,
@@ -179,6 +181,15 @@ const translations = {
     "set.logo": "Logo path (wordmark)",
     "set.icon": "Icon path (favicon/mark)",
     "set.save_branding": "Save branding",
+    "set.env": "Server configuration",
+    "set.env_sub": "Environment (.env)",
+    "set.env_note": "Edit the .env values here. Secrets stay hidden - leave a field blank to keep the current value.",
+    "set.env_readonly": "The .env file is not writable by the service, so changes cannot be saved. Add the .env file to the systemd ReadWritePaths and make it writable for the service user.",
+    "set.env_save": "Save configuration",
+    "set.env_saved": "Configuration saved.",
+    "set.env_saved_restart": "Saved. Restart the service for all changes to take effect.",
+    "set.env_restart_tag": "restart",
+    "set.env_secret_ph": "leave blank to keep",
     "set.statuses": "Task statuses",
     "set.custom_status": "Custom status",
     "set.flag_default": "Default",
@@ -284,6 +295,15 @@ const translations = {
     "set.logo": "Logo-Pfad (Wortmarke)",
     "set.icon": "Icon-Pfad (Favicon/Mark)",
     "set.save_branding": "Branding speichern",
+    "set.env": "Server-Konfiguration",
+    "set.env_sub": "Umgebung (.env)",
+    "set.env_note": "Bearbeite die .env-Werte hier. Secrets bleiben verborgen - leer lassen behält den bisherigen Wert.",
+    "set.env_readonly": "Die .env-Datei ist für den Dienst nicht beschreibbar, Änderungen können nicht gespeichert werden. Nimm die .env in die systemd-ReadWritePaths auf und mach sie für den Dienst-User beschreibbar.",
+    "set.env_save": "Konfiguration speichern",
+    "set.env_saved": "Konfiguration gespeichert.",
+    "set.env_saved_restart": "Gespeichert. Starte den Dienst neu, damit alle Änderungen wirken.",
+    "set.env_restart_tag": "Neustart",
+    "set.env_secret_ph": "leer lassen = unverändert",
     "set.statuses": "Aufgaben-Status",
     "set.custom_status": "Custom Status",
     "set.flag_default": "Standard",
@@ -1627,8 +1647,53 @@ function renderSettings() {
           <button type="submit" class="button secondary">${t("set.create_token")}</button>
         </form>
       </div>
+
+      <div class="panel settings-panel env-panel">
+        <div class="panel-head"><h2>${t("set.env")}</h2><span>${t("set.env_sub")}</span></div>
+        <p class="panel-note">${t("set.env_note")}</p>
+        ${state.envWritable === false ? `<p class="env-warning">${t("set.env_readonly")}</p>` : ""}
+        <form id="env-form" class="settings-form env-form">
+          ${(state.env || []).map(renderEnvField).join("")}
+          <button type="submit" class="button primary env-save">${t("set.env_save")}</button>
+        </form>
+      </div>
     </section>
   `;
+}
+
+const envLabels = {
+  LOCALE: { en: "Interface language", de: "Sprache der Oberfläche" },
+  TRUST_PROXY: { en: "Behind a reverse proxy (Cloudflare/Apache/Nginx)", de: "Hinter Reverse-Proxy (Cloudflare/Apache/Nginx)" },
+  UPDATE_CHECK: { en: "Check for updates", de: "Nach Updates suchen" },
+  UPDATE_REPO: { en: "Update repository (owner/name)", de: "Update-Repository (owner/name)" },
+  DISCORD_CLIENT_ID: { en: "Discord client ID", de: "Discord Client-ID" },
+  DISCORD_CLIENT_SECRET: { en: "Discord client secret", de: "Discord Client-Secret" },
+  DISCORD_REDIRECT_URI: { en: "Discord redirect URI", de: "Discord Redirect-URI" },
+  ADMIN_DISCORD_IDS: { en: "Admin Discord IDs (comma separated)", de: "Admin Discord-IDs (Komma-getrennt)" },
+  DISCORD_WEBHOOK_URL: { en: "Changelog webhook URL", de: "Changelog Webhook-URL" },
+  DISCORD_BOT_TOKEN: { en: "Discord bot token (avatar refresh)", de: "Discord Bot-Token (Avatar-Aktualisierung)" }
+};
+
+function envLabel(key) {
+  const entry = envLabels[key];
+  return entry ? entry[state.locale] || entry.en : key;
+}
+
+function renderEnvField(field) {
+  const label = envLabel(field.key);
+  const restartTag = field.restart ? ` <span class="env-restart">${t("set.env_restart_tag")}</span>` : "";
+  if (field.type === "boolean") {
+    const on = field.value === "true" || field.value === true;
+    return `<label class="field inline-check env-check"><input type="checkbox" name="${field.key}" ${on ? "checked" : ""} /> <span>${label}${restartTag}</span></label>`;
+  }
+  if (field.type === "select") {
+    return `<label class="field"><span>${label}${restartTag}</span><select name="${field.key}">${(field.options || [])
+      .map((option) => `<option value="${escapeHtml(option)}" ${field.value === option ? "selected" : ""}>${escapeHtml(option)}</option>`)
+      .join("")}</select></label>`;
+  }
+  const type = field.type === "password" ? "password" : "text";
+  const placeholder = field.secret && field.hasValue ? t("set.env_secret_ph") : "";
+  return `<label class="field"><span>${label}${restartTag}</span><input type="${type}" name="${field.key}" value="${escapeHtml(field.value || "")}" placeholder="${escapeHtml(placeholder)}" autocomplete="off" spellcheck="false" /></label>`;
 }
 
 function showTokenResult(token, record) {
@@ -3985,6 +4050,19 @@ document.addEventListener("submit", async (event) => {
       });
       await refreshData();
       showTokenResult(result.token, result.record);
+    } else if (form.id === "env-form") {
+      const envValues = {};
+      (state.env || []).forEach((field) => {
+        const element = form.elements[field.key];
+        if (!element) return;
+        envValues[field.key] = field.type === "boolean" ? element.checked : element.value;
+      });
+      const result = await api("/api/env", {
+        method: "PATCH",
+        body: JSON.stringify({ values: envValues })
+      });
+      await refreshData();
+      toast(result.restartRequired ? t("set.env_saved_restart") : t("set.env_saved"));
     }
   } catch (error) {
     toast(error.message, "error");

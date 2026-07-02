@@ -160,6 +160,22 @@ Anyone with the `manage_settings` permission (and every administrator) can open
   a completion status, and delete unused ones.
 - **API tokens** - create read or read/write tokens. The plain token is shown
   only once.
+- **Server configuration** - edit a curated set of `.env` values (language,
+  reverse-proxy flag, update check, Discord OAuth / webhook / bot token) from the
+  UI. Secrets stay hidden - leave a field blank to keep the current value. Some
+  values (marked "restart") only take effect after the service restarts.
+
+For the **Server configuration** editor to save, the service must be allowed to
+write to the `.env` file. The provided systemd unit lists it in `ReadWritePaths`;
+make the file owned by and writable for the service user:
+
+```bash
+sudo chown planara:planara /opt/planara/.env
+sudo chmod 600 /opt/planara/.env
+```
+
+If the file is not writable, the panel still shows the values but displays a
+read-only notice instead of saving.
 
 ## API
 
