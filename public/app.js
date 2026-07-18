@@ -2009,6 +2009,11 @@ function renderIdeaCard(idea) {
               ? `<button class="button secondary" data-action="convert-idea" data-id="${idea.id}">Create as task</button>`
               : ""
           }
+          ${
+            hasPermission("create_task") || idea.authorId === state.me.id
+              ? `<button class="button ghost danger-text" data-action="delete-idea" data-id="${idea.id}">Delete</button>`
+              : ""
+          }
         </div>
       </div>
     </article>
@@ -2072,6 +2077,11 @@ function renderBugCard(bug) {
           ${
             !bug.taskId && hasPermission("create_task")
               ? `<button class="button secondary" data-action="convert-bug" data-id="${bug.id}">Create as task</button>`
+              : ""
+          }
+          ${
+            hasPermission("create_task") || bug.authorId === state.me.id
+              ? `<button class="button ghost danger-text" data-action="delete-bug" data-id="${bug.id}">Delete</button>`
               : ""
           }
         </div>
@@ -3383,6 +3393,26 @@ function showDeleteChangeConfirm(entry) {
   `);
 }
 
+function showDeleteSourceConfirm(type, record) {
+  if (!record) return;
+  const isBug = type === "bug";
+  const preview = escapeHtml((isBug ? record.subject : record.text) || "").slice(0, 140);
+  openModal(`
+    <div class="confirm-dialog">
+      <span class="confirm-icon">×</span>
+      <h2>${isBug ? "Delete bug report?" : "Delete idea?"}</h2>
+      <p class="modal-subtitle">This entry will be permanently removed. This action cannot be undone.</p>
+      <div class="delete-preview">
+        <strong>${preview}</strong>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="button secondary" data-close-modal>Cancel</button>
+        <button type="button" class="button danger" data-action="confirm-delete-${type}" data-id="${record.id}">Delete permanently</button>
+      </div>
+    </div>
+  `);
+}
+
 function clearTaskDropTargets() {
   document.querySelectorAll(".board-column.is-drop-target").forEach((column) => {
     column.classList.remove("is-drop-target");
@@ -3637,6 +3667,20 @@ document.addEventListener("click", async (event) => {
         "bug",
         state.bugs.find((bug) => bug.id === button.dataset.id)
       );
+    } else if (action === "delete-idea") {
+      showDeleteSourceConfirm("idea", state.ideas.find((idea) => idea.id === button.dataset.id));
+    } else if (action === "delete-bug") {
+      showDeleteSourceConfirm("bug", state.bugs.find((bug) => bug.id === button.dataset.id));
+    } else if (action === "confirm-delete-idea") {
+      await api(`/api/ideas/${button.dataset.id}`, { method: "DELETE" });
+      closeModal();
+      await refreshData();
+      toast("Idea was deleted.");
+    } else if (action === "confirm-delete-bug") {
+      await api(`/api/bugs/${button.dataset.id}`, { method: "DELETE" });
+      closeModal();
+      await refreshData();
+      toast("Bug report was deleted.");
     } else if (action === "view-linked-task") {
       const task = state.tasks.find((item) => item.id === button.dataset.id);
       if (task) showTaskDetail(task);

@@ -1953,6 +1953,30 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  const sourceDeleteMatch = url.pathname.match(/^\/api\/(ideas|bugs)\/([^/]+)$/);
+  if (sourceDeleteMatch && req.method === "DELETE") {
+    const collection = sourceDeleteMatch[1];
+    const sourceType = collection === "ideas" ? "idea" : "bug";
+    const records = await readJson(collection);
+    const index = records.findIndex((item) => item.id === sourceDeleteMatch[2]);
+    if (index < 0) {
+      sendJson(res, 404, { error: sourceType === "idea" ? "Idee nicht gefunden." : "Bug-Report nicht gefunden." });
+      return;
+    }
+    const record = records[index];
+    if (record.authorId !== user.id && !hasPermission(user, "create_task")) {
+      sendJson(res, 403, { error: "Dafür fehlen dir die notwendigen Rechte." });
+      return;
+    }
+    if (record.media && record.media.fileName) {
+      await fsp.unlink(path.join(REPORT_UPLOAD_DIR, record.media.fileName)).catch(() => {});
+    }
+    records.splice(index, 1);
+    await writeJson(collection, records);
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/tasks") {
     if (!requirePermission(user, "create_task", res)) return;
     const body = await readBody(req);
