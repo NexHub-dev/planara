@@ -791,7 +791,8 @@ function reportMediaHasValidSignature(mimeType, buffer) {
       buffer[0] === 0x1a &&
       buffer[1] === 0x45 &&
       buffer[2] === 0xdf &&
-      buffer[3] === 0xa3;
+      buffer[3] === 0xa3 &&
+      buffer.subarray(0, 64).includes("webm");
   }
   if (mimeType === "video/mp4" || mimeType === "video/quicktime") {
     return buffer.length >= 12 && buffer.subarray(4, 8).toString("ascii") === "ftyp";
@@ -1169,27 +1170,37 @@ async function handleDiscordCallback(url, res) {
     return;
   }
 
-  const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: process.env.DISCORD_CLIENT_ID,
-      client_secret: process.env.DISCORD_CLIENT_SECRET,
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: process.env.DISCORD_REDIRECT_URI
-    })
-  });
-  if (!tokenResponse.ok) throw new Error("Discord hat die Anmeldung abgelehnt.");
-  const token = await tokenResponse.json();
-  const userResponse = await fetch("https://discord.com/api/users/@me", {
-    headers: { Authorization: `Bearer ${token.access_token}` }
-  });
-  if (!userResponse.ok) throw new Error("Discord-Profil konnte nicht geladen werden.");
-  const discordUser = await userResponse.json();
-  const user = await upsertDiscordUser(discordUser);
-  await setSession(res, user.id, false);
-  redirect(res, "/?loginPrompt=1");
+  try {
+    const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: process.env.DISCORD_CLIENT_ID,
+        client_secret: process.env.DISCORD_CLIENT_SECRET,
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: process.env.DISCORD_REDIRECT_URI
+      })
+    });
+    if (!tokenResponse.ok) {
+      redirect(res, "/?authError=Discord-Anmeldung%20fehlgeschlagen.%20Bitte%20erneut%20versuchen.");
+      return;
+    }
+    const token = await tokenResponse.json();
+    const userResponse = await fetch("https://discord.com/api/users/@me", {
+      headers: { Authorization: `Bearer ${token.access_token}` }
+    });
+    if (!userResponse.ok) {
+      redirect(res, "/?authError=Discord-Profil%20konnte%20nicht%20geladen%20werden.");
+      return;
+    }
+    const discordUser = await userResponse.json();
+    const user = await upsertDiscordUser(discordUser);
+    await setSession(res, user.id, false);
+    redirect(res, "/?loginPrompt=1");
+  } catch {
+    redirect(res, "/?authError=Discord%20ist%20gerade%20nicht%20erreichbar.%20Bitte%20spaeter%20erneut%20versuchen.");
+  }
 }
 
 async function handleDemoLogin(req, res) {
@@ -2452,7 +2463,7 @@ async function handleApi(req, res, url) {
 async function serveStatic(url, res) {
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === "/") pathname = "/index.html";
-  const filePath = path.normalize(path.join(PUBLIC_DIR, pathname));
+  const filePath = path.resolve(PUBLIC_DIR, pathname.replace(/^\/+/, ""));
   if (filePath !== PUBLIC_DIR && !filePath.startsWith(PUBLIC_DIR + path.sep)) {
     sendJson(res, 403, { error: "Zugriff verweigert." });
     return;
