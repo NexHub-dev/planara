@@ -50,7 +50,7 @@ Copy `.env.example` to `.env` and adjust the values:
 | `DISCORD_CLIENT_ID` | empty | Optional. Enables the "Continue with Discord" button. |
 | `DISCORD_CLIENT_SECRET` | empty | Optional. Discord OAuth secret. |
 | `DISCORD_REDIRECT_URI` | empty | Optional. Must match the redirect set in the Discord developer portal, e.g. `https://your-domain/auth/discord/callback`. |
-| `ADMIN_DISCORD_IDS` | empty | Optional. Comma separated Discord IDs that become administrators on first Discord login. |
+| `ADMIN_DISCORD_IDS` | empty | Optional and not needed for the first admin. The very first account to register (local or Discord) is made administrator automatically. Use this only to grant admin to additional, specific Discord IDs on their first Discord login. |
 | `DISCORD_WEBHOOK_URL` | empty | Optional. Target for published changelogs. |
 | `DISCORD_BOT_TOKEN` | empty | Optional. When set, a Discord user's avatar is refreshed on page load (throttled to once every 30 minutes), so a changed profile picture appears without signing in again. Without it, avatars still refresh on each Discord login. |
 | `UPDATE_CHECK` | `true` | Set to `false` to disable the "update available" notice. |

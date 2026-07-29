@@ -1053,7 +1053,10 @@ async function upsertDiscordUser(discordUser) {
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean);
-  const isAdmin = adminIds.includes(discordUser.id);
+  // The very first account to register - via Discord or a local account - becomes
+  // the administrator automatically. ADMIN_DISCORD_IDS stays optional on top.
+  const isFirstUser = users.length === 0;
+  const isAdmin = isFirstUser || adminIds.includes(discordUser.id);
   const existing = users.find((user) => user.discordId === discordUser.id);
   const group = isAdmin ? findLeadGroup(groups) : groups.find((item) => item.id === existing?.groupId);
   const avatar = discordUser.avatar
