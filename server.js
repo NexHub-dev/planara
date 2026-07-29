@@ -105,6 +105,7 @@ const EDITABLE_ENV = [
   { key: "TRUST_PROXY", type: "boolean", restart: true },
   { key: "UPDATE_CHECK", type: "boolean", restart: false },
   { key: "UPDATE_REPO", type: "text", restart: false },
+  { key: "API_RATE_LIMIT", type: "text", restart: false },
   { key: "DISCORD_CLIENT_ID", type: "text", restart: false },
   { key: "DISCORD_CLIENT_SECRET", type: "password", secret: true, restart: false },
   { key: "DISCORD_REDIRECT_URI", type: "text", restart: false },
@@ -200,6 +201,49 @@ function clientIp(req) {
   }
   return req.socket?.remoteAddress || "";
 }
+
+const LOGIN_MAX_FAILS = 10;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const REGISTER_MAX = 5;
+const REGISTER_WINDOW_MS = 30 * 60 * 1000;
+const rateBuckets = new Map();
+const loginFails = new Map();
+
+function apiRateLimit() {
+  const value = parseInt(process.env.API_RATE_LIMIT || "0", 10);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+function rateLimitHit(key, limit, windowMs) {
+  const now = Date.now();
+  let entry = rateBuckets.get(key);
+  if (!entry || entry.resetAt <= now) {
+    entry = { count: 0, resetAt: now + windowMs };
+    rateBuckets.set(key, entry);
+  }
+  entry.count += 1;
+  return { limited: entry.count > limit, retryAfter: Math.max(1, Math.ceil((entry.resetAt - now) / 1000)) };
+}
+function loginBlocked(ip) {
+  const entry = loginFails.get(ip);
+  if (!entry || entry.resetAt <= Date.now()) return 0;
+  return entry.count >= LOGIN_MAX_FAILS ? Math.max(1, Math.ceil((entry.resetAt - Date.now()) / 1000)) : 0;
+}
+function recordLoginFail(ip) {
+  const now = Date.now();
+  let entry = loginFails.get(ip);
+  if (!entry || entry.resetAt <= now) entry = { count: 0, resetAt: now + LOGIN_WINDOW_MS };
+  entry.count += 1;
+  loginFails.set(ip, entry);
+}
+function clearLoginFails(ip) {
+  loginFails.delete(ip);
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateBuckets) if (entry.resetAt <= now) rateBuckets.delete(key);
+  for (const [key, entry] of loginFails) if (entry.resetAt <= now) loginFails.delete(key);
+}, 10 * 60 * 1000).unref();
+
 const SESSION_COOKIE = "vlc_session";
 const taskProjectTypes = new Set(["kleinprojekt", "mittelprojekt", "grossprojekt"]);
 
@@ -619,6 +663,17 @@ function sanitizeText(value, maxLength, required = true) {
   if (required && !text) throw new Error("Bitte alle Pflichtfelder ausfüllen.");
   if (text.length > maxLength) throw new Error(`Eingabe darf maximal ${maxLength} Zeichen haben.`);
   return text;
+}
+
+function publicUserLite(user) {
+  return {
+    id: user.id,
+    displayName: user.displayName,
+    avatar: user.avatar,
+    approved: user.approved,
+    groupId: user.groupId,
+    areaIds: Array.isArray(user.areaIds) ? user.areaIds : []
+  };
 }
 
 function publicUser(user) {
@@ -1174,6 +1229,12 @@ async function handleDemoLogin(req, res) {
 }
 
 async function handleRegister(req, res) {
+  const registerRate = rateLimitHit(`register:${clientIp(req)}`, REGISTER_MAX, REGISTER_WINDOW_MS);
+  if (registerRate.limited) {
+    res.setHeader("Retry-After", String(registerRate.retryAfter));
+    sendJson(res, 429, { error: "Zu viele Registrierungen. Bitte versuche es spaeter erneut." });
+    return;
+  }
   const body = await readBody(req);
   const username = String(body.username || "").trim().toLowerCase().replace(/\s+/g, "");
   if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
@@ -1213,6 +1274,13 @@ async function handleRegister(req, res) {
 }
 
 async function handleLogin(req, res) {
+  const ip = clientIp(req);
+  const blockedFor = loginBlocked(ip);
+  if (blockedFor) {
+    res.setHeader("Retry-After", String(blockedFor));
+    sendJson(res, 429, { error: "Zu viele fehlgeschlagene Anmeldeversuche. Bitte versuche es spaeter erneut." });
+    return;
+  }
   const body = await readBody(req);
   const username = String(body.username || "").trim().toLowerCase();
   const password = String(body.password || "");
@@ -1221,9 +1289,11 @@ async function handleLogin(req, res) {
     (item) => item.passwordHash && (item.username || "").toLowerCase() === username
   );
   if (!user || !verifyPassword(password, user.passwordHash)) {
+    recordLoginFail(ip);
     sendJson(res, 401, { error: "Benutzername oder Passwort ist falsch." });
     return;
   }
+  clearLoginFails(ip);
   user.lastLoginAt = new Date().toISOString();
   await writeJson("users", users);
   await setSession(res, user.id, body.remember === true);
@@ -1232,7 +1302,7 @@ async function handleLogin(req, res) {
 
 async function handleApi(req, res, url) {
   if (!validateOrigin(req)) {
-    sendJson(res, 403, { error: "Ungueltiger Anfrageursprung." });
+    sendJson(res, 403, { error: "Invalid request origin." });
     return;
   }
 
@@ -1285,8 +1355,19 @@ async function handleApi(req, res, url) {
     return;
   }
   if (user.isApiToken && user.scope === "read" && req.method !== "GET") {
-    sendJson(res, 403, { error: "Dieser API-Token hat nur Lesezugriff." });
+    sendJson(res, 403, { error: "This API token has read-only access." });
     return;
+  }
+  if (user.isApiToken) {
+    const limit = apiRateLimit();
+    if (limit > 0) {
+      const rl = rateLimitHit(`api:${user.id}`, limit, 60 * 1000);
+      if (rl.limited) {
+        res.setHeader("Retry-After", String(rl.retryAfter));
+        sendJson(res, 429, { error: "API rate limit reached. Please try again later." });
+        return;
+      }
+    }
   }
 
   if (req.method === "POST" && url.pathname === "/api/session/remember") {
@@ -1329,7 +1410,9 @@ async function handleApi(req, res, url) {
     ]);
     sendJson(res, 200, {
       me: publicUser(user),
-      users: users.map(publicUser),
+      users: hasPermission(user, "manage_users")
+        ? users.map(publicUser)
+        : users.map(publicUserLite),
       groups,
       areas,
       tasks,
@@ -1704,7 +1787,7 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/tokens" && (req.method === "GET" || req.method === "POST")) {
     if (!requirePermission(user, "manage_settings", res)) return;
     if (user.isApiToken) {
-      sendJson(res, 403, { error: "API-Tokens koennen nicht ueber die API verwaltet werden." });
+      sendJson(res, 403, { error: "API tokens cannot be managed through the API." });
       return;
     }
     if (req.method === "GET") {
@@ -1737,7 +1820,7 @@ async function handleApi(req, res, url) {
   if (tokenMatch && req.method === "DELETE") {
     if (!requirePermission(user, "manage_settings", res)) return;
     if (user.isApiToken) {
-      sendJson(res, 403, { error: "API-Tokens koennen nicht ueber die API verwaltet werden." });
+      sendJson(res, 403, { error: "API tokens cannot be managed through the API." });
       return;
     }
     const tokens = await readJson("apiTokens");
@@ -2363,7 +2446,7 @@ async function handleApi(req, res, url) {
     return;
   }
 
-  sendJson(res, 404, { error: "API-Endpunkt nicht gefunden." });
+  sendJson(res, 404, { error: "API endpoint not found." });
 }
 
 async function serveStatic(url, res) {

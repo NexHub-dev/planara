@@ -923,62 +923,66 @@ function closeModal() {
   if (modal.open) modal.close();
 }
 
+function tl(en, de) {
+  return state.locale === "de" ? de : en;
+}
+
 function buildTutorialSteps() {
   const steps = [
     {
       page: "dashboard",
       selector: "[data-tutorial='brand']",
-      title: `Willkommen bei ${brandName()}`,
-      text: "This short tour shows you the most important areas. It adapts to your permissions and will not appear again after you finish it.",
+      title: tl("Welcome to " + brandName(), "Willkommen bei " + brandName()),
+      text: tl("This short tour shows you the most important areas. It adapts to your permissions and will not appear again after you finish it.", "Diese kurze Tour zeigt dir die wichtigsten Bereiche. Sie passt sich deinen Rechten an und erscheint nach dem Abschluss nicht mehr."),
       mobileMenu: true
     },
     {
       page: "dashboard",
       selector: "[data-tutorial='page-dashboard']",
-      title: "Your overview",
-      text: "Here you see open tasks, upcoming deadlines, project progress and the latest changelog activity at a glance."
+      title: tl("Your overview", "Deine Übersicht"),
+      text: tl("Here you see open tasks, upcoming deadlines, project progress and the latest changelog activity at a glance.", "Hier siehst du offene Aufgaben, anstehende Termine, den Projektfortschritt und die neueste Changelog-Aktivität auf einen Blick.")
     },
     {
       page: "tasks",
       selector: "[data-tutorial='task-board']",
-      title: "Tasks and projects",
-      text: "Tasks move from planning to done across these columns. Your tasks appear at the top, unassigned tasks are marked as „needs owner“ and can be claimed with the right permissions."
+      title: tl("Tasks and projects", "Aufgaben und Projekte"),
+      text: tl("Tasks move from planning to done across these columns. Your tasks appear at the top, unassigned tasks are marked as „needs owner“ and can be claimed with the right permissions.", "Aufgaben wandern über diese Spalten von der Planung bis zum Abschluss. Deine Aufgaben stehen oben, unbesetzte sind als „braucht Bearbeiter“ markiert und können mit den passenden Rechten übernommen werden.")
     },
     {
       page: "tasks",
       selector: "[data-tutorial='task-board']",
-      title: "Details, deadlines and notes",
-      text: "Open a card for roadmap, priority and project type. The assignee sets the due date and can keep notes on the task together with the lead."
+      title: tl("Details, deadlines and notes", "Details, Termine und Notizen"),
+      text: tl("Open a card for roadmap, priority and project type. The assignee sets the due date and can keep notes on the task together with the lead.", "Öffne eine Karte für Roadmap, Priorität und Projekttyp. Die zugewiesene Person setzt das Fertigstellungsdatum und kann gemeinsam mit der Leitung Notizen an der Aufgabe pflegen.")
     }
   ];
 
   steps.push({
     page: "tasks",
     selector: "[data-tutorial='task-board']",
-    title: "Aufgaben verschieben",
+    title: tl("Move tasks", "Aufgaben verschieben"),
     text: hasPermission("manage_tasks")
-      ? "You can drag any card into another status column. Users without manage rights can move their own assigned tasks."
-      : "You can drag your own assigned tasks into another status column."
+      ? tl("You can drag any card into another status column. Users without manage rights can move their own assigned tasks.", "Du kannst jede Karte in eine andere Status-Spalte ziehen. Nutzer ohne Verwaltungsrecht können ihre eigenen zugewiesenen Aufgaben verschieben.")
+      : tl("You can drag your own assigned tasks into another status column.", "Du kannst deine eigenen zugewiesenen Aufgaben in eine andere Status-Spalte ziehen.")
   });
 
   steps.push(
     {
       page: "ideas",
       selector: "[data-tutorial='page-ideas']",
-      title: "Ideas from the whole team",
-      text: "Every approved user can submit an idea here. People with the „Create tasks“ permission can turn it into a fully editable task."
+      title: tl("Ideas from the whole team", "Ideen aus dem ganzen Team"),
+      text: tl("Every approved user can submit an idea here. People with the „Create tasks“ permission can turn it into a fully editable task.", "Jeder freigeschaltete Nutzer kann hier eine Idee einreichen. Personen mit dem Recht „Aufgaben erstellen“ können daraus eine voll bearbeitbare Aufgabe machen.")
     },
     {
       page: "bugs",
       selector: "[data-tutorial='page-bugs']",
-      title: "Bugs nachvollziehbar melden",
-      text: "Bug reports contain the affected area, a description, the importance and optionally an image or video up to 250 MB."
+      title: tl("Report bugs clearly", "Bugs nachvollziehbar melden"),
+      text: tl("Bug reports contain the affected area, a description, the importance and optionally an image or video up to 250 MB.", "Bug-Reports enthalten den betroffenen Bereich, eine Beschreibung, die Wichtigkeit und optional ein Bild oder Video bis 250 MB.")
     },
     {
       page: "definitions",
       selector: "[data-tutorial='page-definitions']",
-      title: "Small, medium and large projects",
-      text: "These rules help classify a task consistently. What matters is technical scope, difficulty, dependencies and testing effort."
+      title: tl("Small, medium and large projects", "Klein-, Mittel- und Großprojekte"),
+      text: tl("These rules help classify a task consistently. What matters is technical scope, difficulty, dependencies and testing effort.", "Diese Regeln helfen, eine Aufgabe einheitlich einzuordnen. Entscheidend sind technischer Umfang, Schwierigkeit, Abhängigkeiten und Testaufwand.")
     }
   );
 
@@ -986,14 +990,14 @@ function buildTutorialSteps() {
     {
       page: "changelog",
       selector: "[data-tutorial='page-changelog']",
-      title: "Submit changelog",
-      text: "Added, edited and removed items are collected here. A red X shows that the lead still has to review the entry."
+      title: tl("Submit changelog", "Changelog einreichen"),
+      text: tl("Added, edited and removed items are collected here. A red X shows that the lead still has to review the entry.", "Hinzugefügte, bearbeitete und entfernte Inhalte werden hier gesammelt. Ein rotes X zeigt, dass die Leitung den Eintrag noch prüfen muss.")
     },
     {
       page: "archive",
       selector: "[data-tutorial='page-archive']",
-      title: "Alte Changelogs",
-      text: "After a webhook push the current changelog is cleared. Published versions stay in this archive permanently with their effective time."
+      title: tl("Past changelogs", "Alte Changelogs"),
+      text: tl("After a webhook push the current changelog is cleared. Published versions stay in this archive permanently with their effective time.", "Nach einem Webhook-Push wird der aktuelle Changelog geleert. Veröffentlichte Versionen bleiben mit ihrer Gültigkeitszeit dauerhaft in diesem Archiv.")
     }
   );
 
@@ -1001,8 +1005,8 @@ function buildTutorialSteps() {
     steps.push({
       page: "review",
       selector: "[data-tutorial='page-review']",
-      title: "Lead approvals",
-      text: "In this section you review submitted changelogs, improve the wording and approve them for the next Discord push."
+      title: tl("Lead approvals", "Freigaben der Leitung"),
+      text: tl("In this section you review submitted changelogs, improve the wording and approve them for the next Discord push.", "In diesem Bereich prüfst du eingereichte Changelogs, verbesserst die Formulierung und gibst sie für den nächsten Discord-Push frei.")
     });
   }
 
@@ -1010,8 +1014,8 @@ function buildTutorialSteps() {
     steps.push({
       page: "users",
       selector: "[data-tutorial='page-users']",
-      title: "Approve users",
-      text: "New users wait here for approval. You assign them a role and thereby their available features."
+      title: tl("Approve users", "Nutzer freischalten"),
+      text: tl("New users wait here for approval. You assign them a role and thereby their available features.", "Neue Nutzer warten hier auf Freischaltung. Du weist ihnen eine Rolle zu und damit ihre verfügbaren Funktionen.")
     });
   }
 
@@ -1019,22 +1023,22 @@ function buildTutorialSteps() {
     steps.push({
       page: "groups",
       selector: "[data-tutorial='page-groups']",
-      title: "Roles and permissions",
-      text: "As an administrator you can create your own roles and freely combine their permissions. Changes apply automatically to all members of the role."
+      title: tl("Roles and permissions", "Gruppen & Rechte"),
+      text: tl("As an administrator you can create your own roles and freely combine their permissions. Changes apply automatically to all members of the role.", "Als Administrator kannst du eigene Rollen erstellen und ihre Rechte frei kombinieren. Änderungen gelten automatisch für alle Mitglieder der Rolle.")
     });
     steps.push({
       page: "areas",
       selector: "[data-tutorial='page-areas']",
-      title: "Manage areas",
-      text: "Areas connect users with tasks. A user can belong to multiple areas; open tasks stay visible to everyone."
+      title: tl("Manage areas", "Bereiche verwalten"),
+      text: tl("Areas connect users with tasks. A user can belong to multiple areas; open tasks stay visible to everyone.", "Bereiche verbinden Nutzer mit Aufgaben. Ein Nutzer kann zu mehreren Bereichen gehören; offene Aufgaben bleiben für alle sichtbar.")
     });
   }
 
   steps.push({
     page: "dashboard",
     selector: "[data-action='start-tutorial']",
-    title: "Alles bereit",
-    text: "That completes the tour. You can restart it any time via „Tutorial“ in the top right."
+    title: tl("All set", "Alles bereit"),
+    text: tl("That completes the tour. You can restart it any time via „Tutorial“ in the top right.", "Damit ist die Tour abgeschlossen. Du kannst sie jederzeit oben rechts über „Tutorial“ neu starten.")
   });
   return steps;
 }
@@ -1176,6 +1180,23 @@ function renderTutorialStep() {
     document.body.classList.remove("menu-open");
   }
 
+  const layer = ensureTutorialLayer();
+  const popup = layer.querySelector(".tutorial-popup");
+  const isLast = tutorial.index === tutorial.steps.length - 1;
+  popup.innerHTML = `
+    <div class="tutorial-kicker">Tour · ${tutorial.index + 1} ${tl("of", "von")} ${tutorial.steps.length}</div>
+    <h2>${escapeHtml(step.title)}</h2>
+    <p>${escapeHtml(step.text)}</p>
+    <div class="tutorial-progress" aria-hidden="true">
+      ${tutorial.steps.map((_, index) => `<i class="${index <= tutorial.index ? "active" : ""}"></i>`).join("")}
+    </div>
+    <div class="tutorial-actions">
+      <button class="button ghost" data-action="tutorial-back" ${tutorial.index === 0 ? "disabled" : ""}>${tl("Back", "Zurück")}</button>
+      <button class="button primary" data-action="${isLast ? "tutorial-finish" : "tutorial-next"}">${isLast ? tl("Finish tour", "Tour beenden") : tl("Next", "Weiter")}</button>
+    </div>
+  `;
+  popup.querySelector(".button.primary")?.focus({ preventScroll: true });
+
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       if (!tutorial.active || renderToken !== tutorial.renderToken) return;
@@ -1192,23 +1213,7 @@ function renderTutorialStep() {
         const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
         window.scrollTo({ top: Math.min(Math.max(0, absoluteTop - offset), maxScroll), behavior: "auto" });
       }
-      const layer = ensureTutorialLayer();
-      const popup = layer.querySelector(".tutorial-popup");
-      const isLast = tutorial.index === tutorial.steps.length - 1;
-      popup.innerHTML = `
-        <div class="tutorial-kicker">Tour · ${tutorial.index + 1} von ${tutorial.steps.length}</div>
-        <h2>${escapeHtml(step.title)}</h2>
-        <p>${escapeHtml(step.text)}</p>
-        <div class="tutorial-progress" aria-hidden="true">
-          ${tutorial.steps.map((_, index) => `<i class="${index <= tutorial.index ? "active" : ""}"></i>`).join("")}
-        </div>
-        <div class="tutorial-actions">
-          <button class="button ghost" data-action="tutorial-back" ${tutorial.index === 0 ? "disabled" : ""}>Back</button>
-          <button class="button primary" data-action="${isLast ? "tutorial-finish" : "tutorial-next"}">${isLast ? "Finish tour" : "Next"}</button>
-        </div>
-      `;
       positionTutorialLayer(layer, target);
-      popup.querySelector(".button.primary")?.focus({ preventScroll: true });
     });
   });
 }
@@ -1732,6 +1737,7 @@ const envLabels = {
   TRUST_PROXY: { en: "Behind a reverse proxy (Cloudflare/Apache/Nginx)", de: "Hinter Reverse-Proxy (Cloudflare/Apache/Nginx)" },
   UPDATE_CHECK: { en: "Check for updates", de: "Nach Updates suchen" },
   UPDATE_REPO: { en: "Update repository (owner/name)", de: "Update-Repository (owner/name)" },
+  API_RATE_LIMIT: { en: "API rate limit (requests/min per token, 0 = off)", de: "API-Rate-Limit (Anfragen/Min pro Token, 0 = aus)" },
   DISCORD_CLIENT_ID: { en: "Discord client ID", de: "Discord Client-ID" },
   DISCORD_CLIENT_SECRET: { en: "Discord client secret", de: "Discord Client-Secret" },
   DISCORD_REDIRECT_URI: { en: "Discord redirect URI", de: "Discord Redirect-URI" },

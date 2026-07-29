@@ -54,6 +54,7 @@ Copy `.env.example` to `.env` and adjust the values:
 | `DISCORD_BOT_TOKEN` | empty | Optional. When set, a Discord user's avatar is refreshed on page load (throttled to once every 30 minutes), so a changed profile picture appears without signing in again. Without it, avatars still refresh on each Discord login. |
 | `UPDATE_CHECK` | `true` | Set to `false` to disable the "update available" notice. |
 | `UPDATE_REPO` | `NexHub-dev/planara` | Repository checked for new releases. Point it at your fork if you maintain one. |
+| `API_RATE_LIMIT` | `0` | Optional. Maximum API requests per minute **per API token** (`0` disables it). Session/UI requests are not affected. Login and registration always have a built-in per-IP limit. |
 
 Discord is fully optional. With an empty `.env`, Planara runs entirely on local
 accounts and ships no credentials.
