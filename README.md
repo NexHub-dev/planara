@@ -15,6 +15,16 @@ step required.
 
 Project page: https://planara.nexhub.dev
 
+## A note on how this was built
+
+I want to be honest about this: Planara was built with heavy use of AI
+assistance. It is not, however, a throwaway copy-paste project. A lot of real
+time went into it - shaping the design and the decisions, integrating
+human-written code, running it in production, and finding and fixing actual bugs.
+The result is a real, working tool that people use every day, built by a human
+and AI together. If that mix is a dealbreaker for you, that is completely fair -
+I would rather tell you up front than pretend otherwise.
+
 ## Requirements
 
 - Node.js 18 or newer (`node --version`)

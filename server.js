@@ -1311,12 +1311,7 @@ async function handleLogin(req, res) {
   sendJson(res, 200, { user: publicUser(user), pending: !user.approved });
 }
 
-async function handleApi(req, res, url) {
-  if (!validateOrigin(req)) {
-    sendJson(res, 403, { error: "Invalid request origin." });
-    return;
-  }
-
+async function apiPublicRoutes(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/me") {
     let user = await getCurrentUser(req);
     if (user) user = await refreshDiscordAvatar(user);
@@ -1360,27 +1355,9 @@ async function handleApi(req, res, url) {
     return;
   }
 
-  const user = (await authenticateApiToken(req)) || (await getCurrentUser(req));
-  if (!user) {
-    sendJson(res, 401, { error: "Bitte zuerst anmelden." });
-    return;
-  }
-  if (user.isApiToken && user.scope === "read" && req.method !== "GET") {
-    sendJson(res, 403, { error: "This API token has read-only access." });
-    return;
-  }
-  if (user.isApiToken) {
-    const limit = apiRateLimit();
-    if (limit > 0) {
-      const rl = rateLimitHit(`api:${user.id}`, limit, 60 * 1000);
-      if (rl.limited) {
-        res.setHeader("Retry-After", String(rl.retryAfter));
-        sendJson(res, 429, { error: "API rate limit reached. Please try again later." });
-        return;
-      }
-    }
-  }
+}
 
+async function apiSessionRoutes(req, res, url, user) {
   if (req.method === "POST" && url.pathname === "/api/session/remember") {
     const body = await readBody(req);
     if (!(await updateSessionPersistence(req, res, body.remember === true))) return;
@@ -1388,11 +1365,9 @@ async function handleApi(req, res, url) {
     return;
   }
 
-  if (!user.approved) {
-    sendJson(res, 403, { error: "Dein Account muss noch freigeschaltet werden.", pending: true });
-    return;
-  }
+}
 
+async function apiWorkspaceRoutes(req, res, url, user) {
   if (req.method === "GET" && url.pathname === "/api/bootstrap") {
     const [
       users,
@@ -1466,6 +1441,9 @@ async function handleApi(req, res, url) {
     return;
   }
 
+}
+
+async function apiAdminRoutes(req, res, url, user) {
   if (req.method === "POST" && url.pathname === "/api/areas") {
     if (!requireAdmin(user, res)) return;
     const body = await readBody(req);
@@ -1628,6 +1606,9 @@ async function handleApi(req, res, url) {
     return;
   }
 
+}
+
+async function apiSettingsRoutes(req, res, url, user) {
   if (req.method === "PATCH" && url.pathname === "/api/branding") {
     if (!requirePermission(user, "manage_settings", res)) return;
     const body = await readBody(req);
@@ -1795,6 +1776,9 @@ async function handleApi(req, res, url) {
     return;
   }
 
+}
+
+async function apiAccountRoutes(req, res, url, user) {
   if (url.pathname === "/api/tokens" && (req.method === "GET" || req.method === "POST")) {
     if (!requirePermission(user, "manage_settings", res)) return;
     if (user.isApiToken) {
@@ -1905,6 +1889,9 @@ async function handleApi(req, res, url) {
     return;
   }
 
+}
+
+async function apiSourceRoutes(req, res, url, user) {
   if (req.method === "GET" && url.pathname === "/api/ideas") {
     if (!requirePermission(user, "view_app", res)) return;
     const [ideas, tasks] = await Promise.all([readJson("ideas"), readJson("tasks")]);
@@ -2060,6 +2047,9 @@ async function handleApi(req, res, url) {
     return;
   }
 
+}
+
+async function apiTaskRoutes(req, res, url, user) {
   if (req.method === "POST" && url.pathname === "/api/tasks") {
     if (!requirePermission(user, "create_task", res)) return;
     const body = await readBody(req);
@@ -2281,6 +2271,9 @@ async function handleApi(req, res, url) {
     return;
   }
 
+}
+
+async function apiChangelogRoutes(req, res, url, user) {
   if (req.method === "POST" && url.pathname === "/api/changelogs") {
     if (!requirePermission(user, "submit_changelog", res)) return;
     const body = await readBody(req);
@@ -2455,6 +2448,54 @@ async function handleApi(req, res, url) {
     await writeJson("settings", settings);
     sendJson(res, 200, { ok: true, count: entries.length, archive: archiveEntry });
     return;
+  }
+
+}
+
+async function handleApi(req, res, url) {
+  if (!validateOrigin(req)) {
+    sendJson(res, 403, { error: "Invalid request origin." });
+    return;
+  }
+
+
+  await apiPublicRoutes(req, res, url);
+  if (res.headersSent) return;
+
+  const user = (await authenticateApiToken(req)) || (await getCurrentUser(req));
+  if (!user) {
+    sendJson(res, 401, { error: "Bitte zuerst anmelden." });
+    return;
+  }
+  if (user.isApiToken && user.scope === "read" && req.method !== "GET") {
+    sendJson(res, 403, { error: "This API token has read-only access." });
+    return;
+  }
+  if (user.isApiToken) {
+    const limit = apiRateLimit();
+    if (limit > 0) {
+      const rl = rateLimitHit(`api:${user.id}`, limit, 60 * 1000);
+      if (rl.limited) {
+        res.setHeader("Retry-After", String(rl.retryAfter));
+        sendJson(res, 429, { error: "API rate limit reached. Please try again later." });
+        return;
+      }
+    }
+  }
+
+
+  await apiSessionRoutes(req, res, url, user);
+  if (res.headersSent) return;
+
+  if (!user.approved) {
+    sendJson(res, 403, { error: "Dein Account muss noch freigeschaltet werden.", pending: true });
+    return;
+  }
+
+
+  for (const handler of [apiWorkspaceRoutes, apiAdminRoutes, apiSettingsRoutes, apiAccountRoutes, apiSourceRoutes, apiTaskRoutes, apiChangelogRoutes]) {
+    await handler(req, res, url, user);
+    if (res.headersSent) return;
   }
 
   sendJson(res, 404, { error: "API endpoint not found." });
