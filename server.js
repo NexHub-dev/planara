@@ -19,19 +19,11 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const APP_LOCALE = String(process.env.LOCALE || "en").trim().toLowerCase().startsWith("de")
   ? "de"
   : "en";
-// Cloudflare / reverse-proxy support: when the app runs behind a TLS-terminating
-// proxy (Cloudflare, Apache, Nginx), set TRUST_PROXY=true (or CLOUDFLARE=true) so
-// session cookies are marked Secure even though the proxy talks to the app over HTTP.
 const TRUST_PROXY = process.env.TRUST_PROXY === "true" || process.env.CLOUDFLARE === "true";
 const SECURE_COOKIES = IS_PRODUCTION || TRUST_PROXY;
 
-// Optional Discord bot token. When set, the current user's Discord avatar is
-// refreshed on page load (throttled), so a changed profile picture shows up
-// without the user having to sign in again.
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || "";
 
-// Update notice: compare the locally installed version against the latest
-// GitHub release. Disable with UPDATE_CHECK=false, point at a fork with UPDATE_REPO.
 const APP_VERSION = (() => {
   try {
     return require("./package.json").version || "0.0.0";
@@ -75,7 +67,6 @@ async function checkForUpdate() {
       if (data.html_url) updateState.url = data.html_url;
     }
   } catch {
-    // network problems should never break the app; keep the previous state
   }
   return updateState;
 }
@@ -108,8 +99,6 @@ async function refreshDiscordAvatar(currentUser) {
   }
 }
 
-// Environment values that administrators may edit from Settings. Only these keys
-// are ever read or written through the API; anything else in .env is untouched.
 const ENV_FILE = path.join(__dirname, ".env");
 const EDITABLE_ENV = [
   { key: "LOCALE", type: "select", options: ["en", "de"], restart: true },
@@ -119,7 +108,6 @@ const EDITABLE_ENV = [
   { key: "DISCORD_CLIENT_ID", type: "text", restart: false },
   { key: "DISCORD_CLIENT_SECRET", type: "password", secret: true, restart: false },
   { key: "DISCORD_REDIRECT_URI", type: "text", restart: false },
-  { key: "ADMIN_DISCORD_IDS", type: "text", restart: false },
   { key: "DISCORD_WEBHOOK_URL", type: "password", secret: true, restart: false },
   { key: "DISCORD_BOT_TOKEN", type: "password", secret: true, restart: true }
 ];
@@ -232,7 +220,6 @@ const DEFAULT_BRANDING = {
   accentColor: "#1fd1c6"
 };
 
-// Configurable Discord changelog embed. Placeholders: {date} {time} {user}.
 const DEFAULT_CHANGELOG_EMBED = {
   username: "",
   color: "#8b5cf6",
@@ -256,6 +243,7 @@ const DEFAULT_GROUPS = [
     name: "Lead-Developer",
     color: "#6d5dfc",
     permissions: [
+      "admin",
       "view_app",
       "create_task",
       "claim_task",
@@ -289,6 +277,7 @@ const oauthStates = new Map();
 let writeQueue = Promise.resolve();
 
 const permissionCatalog = [
+  { id: "admin", name: "Administrator", description: "Voller Administratorzugriff: alle Rechte sowie Gruppen und Bereiche verwalten." },
   { id: "view_app", name: "App ansehen", description: "Zugriff auf den freigeschalteten Workspace." },
   { id: "create_task", name: "Aufgaben erstellen", description: "Neue Aufgaben und Projekte anlegen." },
   { id: "claim_task", name: "Offene Aufgaben übernehmen", description: "Unbesetzte Aufgaben selbst übernehmen." },
@@ -586,11 +575,15 @@ async function getCurrentUser(req) {
   return user;
 }
 
+function isAdminUser(user) {
+  return Boolean(user && (user.isAdmin || (Array.isArray(user.permissions) && user.permissions.includes("admin"))));
+}
+
 function hasPermission(user, permission) {
   return Boolean(
     user &&
       user.approved &&
-      (user.isAdmin || user.permissions.includes(permission))
+      (isAdminUser(user) || user.permissions.includes(permission))
   );
 }
 
@@ -603,7 +596,7 @@ function requirePermission(user, permission, res) {
 }
 
 function requireAdmin(user, res) {
-  if (!user?.isAdmin) {
+  if (!isAdminUser(user)) {
     sendJson(res, 403, { error: "Diese Funktion ist nur für Administratoren verfügbar." });
     return false;
   }
@@ -1049,14 +1042,7 @@ async function migratePublishedChangelogs() {
 async function upsertDiscordUser(discordUser) {
   const users = await readJson("users");
   const groups = await readJson("groups");
-  const adminIds = (process.env.ADMIN_DISCORD_IDS || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-  // The very first account to register - via Discord or a local account - becomes
-  // the administrator automatically. ADMIN_DISCORD_IDS stays optional on top.
-  const isFirstUser = users.length === 0;
-  const isAdmin = isFirstUser || adminIds.includes(discordUser.id);
+  const isAdmin = users.length === 0;
   const existing = users.find((user) => user.discordId === discordUser.id);
   const group = isAdmin ? findLeadGroup(groups) : groups.find((item) => item.id === existing?.groupId);
   const avatar = discordUser.avatar

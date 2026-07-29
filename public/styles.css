@@ -885,9 +885,6 @@ svg {
   transition: grid-template-columns 220ms ease;
 }
 
-/* Desktop: the topbar toggle collapses the sidebar and lets the content fill the
-   freed space. Scoped above the mobile breakpoint so the mobile drawer below is
-   left untouched. */
 @media (min-width: 761px) {
   body.menu-open .app-shell {
     grid-template-columns: 0 minmax(0, 1fr);
@@ -4072,6 +4069,23 @@ body.tutorial-active {
 .settings-form {
   display: grid;
   gap: 13px;
+}
+
+.settings-panel > *:not(.panel-head) {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.settings-panel > .panel-head {
+  margin-bottom: 18px;
+}
+
+.settings-panel > *:last-child {
+  padding-bottom: 20px;
+}
+
+.settings-panel .panel-note {
+  margin-top: 0;
 }
 
 .settings-panel .field {

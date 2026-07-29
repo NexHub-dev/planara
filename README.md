@@ -50,7 +50,6 @@ Copy `.env.example` to `.env` and adjust the values:
 | `DISCORD_CLIENT_ID` | empty | Optional. Enables the "Continue with Discord" button. |
 | `DISCORD_CLIENT_SECRET` | empty | Optional. Discord OAuth secret. |
 | `DISCORD_REDIRECT_URI` | empty | Optional. Must match the redirect set in the Discord developer portal, e.g. `https://your-domain/auth/discord/callback`. |
-| `ADMIN_DISCORD_IDS` | empty | Optional and not needed for the first admin. The very first account to register (local or Discord) is made administrator automatically. Use this only to grant admin to additional, specific Discord IDs on their first Discord login. |
 | `DISCORD_WEBHOOK_URL` | empty | Optional. Target for published changelogs. |
 | `DISCORD_BOT_TOKEN` | empty | Optional. When set, a Discord user's avatar is refreshed on page load (throttled to once every 30 minutes), so a changed profile picture appears without signing in again. Without it, avatars still refresh on each Discord login. |
 | `UPDATE_CHECK` | `true` | Set to `false` to disable the "update available" notice. |
@@ -141,10 +140,16 @@ The vhost blocks access to `.env`, `.git`, `data/`, `server.js` and
 Roles are managed under the admin "Roles" page. Each role is a set of
 permissions, for example:
 
+- `admin` - full administrator access: every permission plus managing roles and
+  areas. Give this permission to a role to make its members administrators.
 - `view_app`, `create_task`, `claim_task`, `manage_tasks`
 - `submit_changelog`, `approve_changelog`, `delete_changelog`, `push_changelog`
 - `manage_users` - approve users and assign roles
 - `manage_settings` - branding, statuses and API tokens (the Settings page)
+
+The **first account to register** (local or Discord) automatically becomes an
+administrator. After that, make someone an administrator by giving their role the
+`admin` permission - there is no separate admin list to maintain.
 
 `manage_settings` is its own permission, so you can let a non-admin role manage
 branding, statuses and tokens without granting full administration.

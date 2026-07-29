@@ -96,6 +96,7 @@ const typeLabels = {
 };
 
 const permissionLabels = {
+  admin: "Administrator",
   view_app: "View app",
   create_task: "Create tasks",
   claim_task: "Claim open tasks",
@@ -304,7 +305,7 @@ const translations = {
     "set.title": "Einstellungen",
     "set.subtitle": "Branding, Aufgaben-Status und API-Zugriff für deinen Workspace anpassen.",
     "set.branding": "Branding",
-    "set.custom_branding": "Custom Branding",
+    "set.custom_branding": "Individuelles Branding",
     "set.productname": "Produktname",
     "set.tagline": "Claim / Tagline",
     "set.primary": "Primärfarbe",
@@ -338,11 +339,11 @@ const translations = {
     "set.embed_saved": "Changelog-Embed gespeichert.",
     "push.no_restart": "Es wird keine Restart-Zeit gesendet (im Embed deaktiviert).",
     "set.statuses": "Aufgaben-Status",
-    "set.custom_status": "Custom Status",
+    "set.custom_status": "Eigene Status",
     "set.flag_default": "Standard",
     "set.flag_done": "Abschluss",
     "set.set_default": "Als Standard setzen",
-    "set.delete": "Delete",
+    "set.delete": "Löschen",
     "set.new_status": "Neuer Status",
     "set.done_label": "Abschluss",
     "set.add": "Hinzufügen",
@@ -361,7 +362,7 @@ const translations = {
     "task.title": "Aufgaben",
     "task.desc": "Vom Backlog bis zum Abschluss. Eigene Aufgaben per Drag & Drop verschieben.",
     "task.desc_manage": " Mit Verwaltungsrecht kannst du alle Aufgaben verschieben.",
-    "task.new": "New task",
+    "task.new": "Neue Aufgabe",
     "task.search": "Aufgaben durchsuchen...",
     "task.scope_own": "Meine Aufgaben",
     "task.scope_areas": "Meine Bereiche",
@@ -666,7 +667,10 @@ const deDict = {
   "emptyInline(\"No upcoming deadlines\")": "emptyInline(\"Keine offenen Termine\")",
   "members assigned": "Mitglieder zugewiesen",
   " as a task": " als Aufgabe anlegen",
-  "A small custom management script, a more complex vehicle bug or an extension of an existing system.": "Kleines eigenes Verwaltungsskript, komplexerer Fahrzeugfehler oder Erweiterung eines bestehenden Systems."
+  "A small custom management script, a more complex vehicle bug or an extension of an existing system.": "Kleines eigenes Verwaltungsskript, komplexerer Fahrzeugfehler oder Erweiterung eines bestehenden Systems.",
+  "Delete bug report?": "Bug-Report löschen?",
+  "Delete idea?": "Idee löschen?",
+  "This entry will be permanently removed. This action cannot be undone.": "Dieser Eintrag wird dauerhaft entfernt. Diese Aktion kann nicht rückgängig gemacht werden."
 };
 
 const dePatterns = [
@@ -751,8 +755,12 @@ async function api(path, options = {}) {
   return payload;
 }
 
+function isAdmin() {
+  return Boolean(state.me?.isAdmin || state.me?.permissions?.includes("admin"));
+}
+
 function hasPermission(permission) {
-  return Boolean(state.me?.isAdmin || state.me?.permissions?.includes(permission));
+  return Boolean(isAdmin() || state.me?.permissions?.includes(permission));
 }
 
 function getUser(userId) {
@@ -1007,7 +1015,7 @@ function buildTutorialSteps() {
     });
   }
 
-  if (state.me?.isAdmin) {
+  if (isAdmin()) {
     steps.push({
       page: "groups",
       selector: "[data-tutorial='page-groups']",
@@ -1526,8 +1534,8 @@ function renderShell() {
             ? `<div class="nav-label">${t("nav.administration")}</div>${navButton("users", "users", t("nav.users"), pendingUsers)}`
             : ""
         }
-        ${state.me.isAdmin ? navButton("groups", "groups", t("nav.groups")) : ""}
-        ${state.me.isAdmin ? navButton("areas", "areas", t("nav.areas")) : ""}
+        ${isAdmin() ? navButton("groups", "groups", t("nav.groups")) : ""}
+        ${isAdmin() ? navButton("areas", "areas", t("nav.areas")) : ""}
         ${hasPermission("manage_settings") ? navButton("settings", "settings", t("nav.settings")) : ""}
         <div class="sidebar-footer">
           <button class="user-chip" data-action="logout">
@@ -1721,7 +1729,6 @@ const envLabels = {
   DISCORD_CLIENT_ID: { en: "Discord client ID", de: "Discord Client-ID" },
   DISCORD_CLIENT_SECRET: { en: "Discord client secret", de: "Discord Client-Secret" },
   DISCORD_REDIRECT_URI: { en: "Discord redirect URI", de: "Discord Redirect-URI" },
-  ADMIN_DISCORD_IDS: { en: "Admin Discord IDs (comma separated)", de: "Admin Discord-IDs (Komma-getrennt)" },
   DISCORD_WEBHOOK_URL: { en: "Changelog webhook URL", de: "Changelog Webhook-URL" },
   DISCORD_BOT_TOKEN: { en: "Discord bot token (avatar refresh)", de: "Discord Bot-Token (Avatar-Aktualisierung)" }
 };
@@ -3560,7 +3567,6 @@ document.addEventListener("pointercancel", (event) => {
 });
 
 document.addEventListener("click", async (event) => {
-  // Mobile: tapping outside the open navigation drawer closes it.
   if (
     document.body.classList.contains("menu-open") &&
     window.matchMedia("(max-width: 760px)").matches &&
@@ -3672,14 +3678,18 @@ document.addEventListener("click", async (event) => {
     } else if (action === "delete-bug") {
       showDeleteSourceConfirm("bug", state.bugs.find((bug) => bug.id === button.dataset.id));
     } else if (action === "confirm-delete-idea") {
-      await api(`/api/ideas/${button.dataset.id}`, { method: "DELETE" });
+      const id = button.dataset.id;
+      await api(`/api/ideas/${id}`, { method: "DELETE" });
+      state.ideas = state.ideas.filter((idea) => idea.id !== id);
       closeModal();
-      await refreshData();
+      softUpdateView();
       toast("Idea was deleted.");
     } else if (action === "confirm-delete-bug") {
-      await api(`/api/bugs/${button.dataset.id}`, { method: "DELETE" });
+      const id = button.dataset.id;
+      await api(`/api/bugs/${id}`, { method: "DELETE" });
+      state.bugs = state.bugs.filter((bug) => bug.id !== id);
       closeModal();
-      await refreshData();
+      softUpdateView();
       toast("Bug report was deleted.");
     } else if (action === "view-linked-task") {
       const task = state.tasks.find((item) => item.id === button.dataset.id);
