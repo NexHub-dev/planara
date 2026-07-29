@@ -1185,7 +1185,13 @@ function renderTutorialStep() {
         renderTutorialStep();
         return;
       }
-      target.scrollIntoView({ behavior: "auto", block: "center", inline: "center" });
+      const preRect = target.getBoundingClientRect();
+      const offset = Math.min(140, window.innerHeight * 0.18);
+      if (preRect.top < offset || preRect.bottom > window.innerHeight - 24) {
+        const absoluteTop = window.scrollY + preRect.top;
+        const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        window.scrollTo({ top: Math.min(Math.max(0, absoluteTop - offset), maxScroll), behavior: "auto" });
+      }
       const layer = ensureTutorialLayer();
       const popup = layer.querySelector(".tutorial-popup");
       const isLast = tutorial.index === tutorial.steps.length - 1;

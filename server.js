@@ -2370,7 +2370,7 @@ async function serveStatic(url, res) {
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === "/") pathname = "/index.html";
   const filePath = path.normalize(path.join(PUBLIC_DIR, pathname));
-  if (!filePath.startsWith(PUBLIC_DIR)) {
+  if (filePath !== PUBLIC_DIR && !filePath.startsWith(PUBLIC_DIR + path.sep)) {
     sendJson(res, 403, { error: "Zugriff verweigert." });
     return;
   }

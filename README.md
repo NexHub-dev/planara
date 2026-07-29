@@ -135,6 +135,26 @@ The application binds to `127.0.0.1:4574` and should not be exposed directly.
 The vhost blocks access to `.env`, `.git`, `data/`, `server.js` and
 `package.json`. Uploads are limited to 250 MB.
 
+### Using Nginx instead of Apache
+
+A ready-to-edit Nginx server block is in `deploy/nginx-planara.conf` (replace
+`planara.example.com` with your domain):
+
+```bash
+sudo cp /opt/planara/deploy/nginx-planara.conf /etc/nginx/sites-available/planara.conf
+sudo ln -s /etc/nginx/sites-available/planara.conf /etc/nginx/sites-enabled/planara.conf
+sudo nginx -t
+sudo systemctl reload nginx
+sudo certbot --nginx -d planara.example.com --redirect
+```
+
+Set `TRUST_PROXY=true` in your `.env` so Planara marks session cookies as
+`Secure` and reads the real client IP from the forwarded headers. The server
+block forwards the original `Host` header (`proxy_set_header Host $http_host`),
+which the app needs for its same-origin check, blocks `.env`, `.git`, `data/`,
+`server.js` and `package.json`, and allows uploads up to 250 MB. It has been
+tested end to end (proxying, the blocked paths, and login through the proxy).
+
 ## Roles and permissions
 
 Roles are managed under the admin "Roles" page. Each role is a set of
