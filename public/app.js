@@ -138,6 +138,8 @@ const translations = {
     "login.btn_register": "Create account",
     "login.btn_create_admin": "Create administrator",
     "login.hint_approval": "New accounts must be approved before first access.",
+    "login.registered_pending": "Registration successful - your account is waiting for approval.",
+    "login.registered_welcome": "Registration successful. Welcome!",
     "login.divider_or": "or",
     "login.discord": "Continue with Discord",
     "login.demo": "Open demo",
@@ -268,6 +270,8 @@ const translations = {
     "login.btn_register": "Konto erstellen",
     "login.btn_create_admin": "Administrator anlegen",
     "login.hint_approval": "Neue Konten werden vor dem ersten Zugriff freigeschaltet.",
+    "login.registered_pending": "Registrierung erfolgreich - dein Account wartet auf Freischaltung.",
+    "login.registered_welcome": "Registrierung erfolgreich. Willkommen!",
     "login.divider_or": "oder",
     "login.discord": "Mit Discord fortfahren",
     "login.demo": "Demo öffnen",
@@ -1297,10 +1301,7 @@ async function initialize() {
     }
     if (!state.me.approved) {
       renderPending();
-      if (showLoginPrompt) {
-        history.replaceState({}, "", "/");
-        showRememberLoginPrompt();
-      }
+      if (showLoginPrompt) history.replaceState({}, "", "/");
       return;
     }
     await refreshData();
@@ -3971,7 +3972,7 @@ document.addEventListener("submit", async (event) => {
       await initialize();
       return;
     } else if (form.id === "register-form") {
-      await api("/api/auth/register", {
+      const result = await api("/api/auth/register", {
         method: "POST",
         body: JSON.stringify({
           username: values.username,
@@ -3981,6 +3982,7 @@ document.addEventListener("submit", async (event) => {
         })
       });
       await initialize();
+      toast(result.pending ? t("login.registered_pending") : t("login.registered_welcome"));
       return;
     } else if (form.id === "task-form") {
       const formData = new FormData(form);
