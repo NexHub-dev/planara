@@ -648,6 +648,7 @@ const deDict = {
   "General · no area": "Allgemein · kein Bereich",
   "Submit changelog": "Changelog einreichen",
   "Approve users": "Nutzer freischalten",
+  "Approve": "Freischalten",
   "Roles and permissions": "Gruppen und Rechte",
   "Manage areas": "Bereiche verwalten",
   "API token created": "API-Token erstellt",

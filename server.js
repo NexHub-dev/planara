@@ -1109,13 +1109,9 @@ async function upsertDiscordUser(discordUser) {
     existing.username = discordUser.username;
     existing.displayName = discordUser.global_name || discordUser.username;
     existing.avatar = avatar;
-    existing.isAdmin = isAdmin;
-    if (group) existing.permissions = [...group.permissions];
-    if (isAdmin) {
-      existing.approved = true;
-      existing.groupId = group ? group.id : null;
-      existing.permissions = group ? [...group.permissions] : [];
-    }
+    const currentGroup = groups.find((item) => item.id === existing.groupId);
+    if (currentGroup) existing.permissions = [...currentGroup.permissions];
+    if (isAdmin) existing.isAdmin = true;
     existing.lastLoginAt = new Date().toISOString();
     await writeJson("users", users);
     return existing;
