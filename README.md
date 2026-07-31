@@ -8,6 +8,8 @@ step required.
 - Custom branding (product name, logo, favicon, colors) from the UI
 - Custom task statuses (name, color, order, done flag)
 - Custom roles with fine-grained permissions
+- Tasks assignable to one or several people
+- Bug reports with multiple image/video attachments, viewable in a lightbox
 - Local accounts (username + password, hashed with scrypt) and optional Discord login
 - API access with read or read/write Bearer tokens
 - English and German interface, switchable via the environment
@@ -232,6 +234,10 @@ curl -H "Authorization: Bearer plnr_xxxxxxxx" https://your-domain/api/tasks
   for signed-in users with the matching permission and cannot be changed through
   a token.
 
+The full endpoint reference - authentication, rate limits, every route, request
+and response shapes, and the task/bug/idea object formats - lives in
+[docs/api.md](docs/api.md).
+
 When a newer release is published on GitHub, signed-in administrators see an
 "update available" badge in the top bar that links to the release notes. You can
 turn this off with `UPDATE_CHECK=false`.
@@ -240,6 +246,8 @@ turn this off with `UPDATE_CHECK=false`.
 
 Step-by-step guides for common setups live in [docs/](docs/):
 
+- [API reference](docs/api.md) - authentication, rate limits, every endpoint and
+  the task/bug/idea object shapes.
 - [Hosting behind a Cloudflare Tunnel](docs/cloudflare-tunnel.md) - give a
   locally running Planara a fixed public HTTPS address without port forwarding.
 - [Automation recipe with n8n, Telegram and email](docs/automation-recipe.md) -

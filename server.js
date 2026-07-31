@@ -363,6 +363,7 @@ const mimeTypes = {
   ".gif": "image/gif",
   ".mp4": "video/mp4",
   ".webm": "video/webm",
+  ".mkv": "video/x-matroska",
   ".mov": "video/quicktime",
   ".ico": "image/x-icon"
 };
@@ -387,8 +388,19 @@ const reportMediaTypes = {
   "image/gif": { extension: ".gif", kind: "image" },
   "video/mp4": { extension: ".mp4", kind: "video" },
   "video/webm": { extension: ".webm", kind: "video" },
+  "video/x-matroska": { extension: ".mkv", kind: "video" },
   "video/quicktime": { extension: ".mov", kind: "video" }
 };
+
+const MAX_BUG_MEDIA = 10;
+
+// Bug media used to be a single object; it is an array now. Normalize both the
+// legacy shape and null so callers can always treat it as a list.
+function normalizeMediaList(media) {
+  if (Array.isArray(media)) return media;
+  if (media && typeof media === "object") return [media];
+  return [];
+}
 
 const blockedPublicPaths =
   /^\/(?:\.env(?:\..*)?|\.git(?:\/|$)|data(?:\/|$)|server\.js$|package(?:-lock)?\.json$)/i;
@@ -718,28 +730,63 @@ function userBelongsToArea(user, areaId) {
   return !areaId || (Array.isArray(user.areaIds) && user.areaIds.includes(areaId));
 }
 
-function isTaskAssignee(task, user) {
-  if (!task?.assigneeId || !user) return false;
-  const assigneeId = String(task.assigneeId);
-  return [user.id, user.discordId, user.username]
-    .filter(Boolean)
-    .some((identifier) => String(identifier) === assigneeId);
+// Tasks can have several assignees. `assigneeIds` is canonical; `assigneeId`
+// is kept as a mirror of the first entry for backward compatibility.
+function taskAssigneeIds(task) {
+  if (Array.isArray(task?.assigneeIds)) return [...new Set(task.assigneeIds.filter(Boolean).map(String))];
+  if (task?.assigneeId) return [String(task.assigneeId)];
+  return [];
 }
 
-function validateTaskAssignee(users, assigneeId, areaId) {
-  if (!assigneeId) return null;
-  const assignee = users.find((item) => item.id === assigneeId && item.approved);
-  if (!assignee) throw new Error("Die ausgewählte Person ist nicht verfügbar.");
-  if (!userBelongsToArea(assignee, areaId)) {
-    throw new Error("Die ausgewählte Person gehört nicht zum Aufgabenbereich.");
+function setTaskAssignees(task, ids) {
+  const unique = [...new Set((ids || []).filter(Boolean).map(String))];
+  task.assigneeIds = unique;
+  task.assigneeId = unique[0] || null;
+  return unique;
+}
+
+function isTaskAssignee(task, user) {
+  if (!user) return false;
+  const ids = taskAssigneeIds(task);
+  if (!ids.length) return false;
+  const identifiers = [user.id, user.discordId, user.username].filter(Boolean).map(String);
+  return ids.some((id) => identifiers.includes(String(id)));
+}
+
+function normalizeAssigneeInput(body, fallback) {
+  if (Array.isArray(body.assigneeIds)) {
+    return [...new Set(body.assigneeIds.map((value) => String(value).trim()).filter(Boolean))];
   }
-  return assignee;
+  if (body.assigneeId !== undefined) {
+    return body.assigneeId ? [String(body.assigneeId).trim()] : [];
+  }
+  return fallback;
+}
+
+function validateTaskAssignees(users, assigneeIds, areaId) {
+  for (const assigneeId of assigneeIds) {
+    const assignee = users.find((item) => item.id === assigneeId && item.approved);
+    if (!assignee) throw new Error("Die ausgewählte Person ist nicht verfügbar.");
+    if (!userBelongsToArea(assignee, areaId)) {
+      throw new Error("Die ausgewählte Person gehört nicht zum Aufgabenbereich.");
+    }
+  }
+  return assigneeIds;
+}
+
+function publicTask(task) {
+  return {
+    ...task,
+    assigneeIds: taskAssigneeIds(task),
+    images: Array.isArray(task.images) ? task.images : [],
+    reportMedia: Array.isArray(task.reportMedia) ? task.reportMedia : []
+  };
 }
 
 async function createTaskRecord(body, user, users, areas, source = null) {
   const areaId = sanitizeTaskAreaId(body.areaId, areas);
-  const assigneeId = String(body.assigneeId || "").trim() || null;
-  validateTaskAssignee(users, assigneeId, areaId);
+  const assigneeIds = normalizeAssigneeInput(body, []);
+  validateTaskAssignees(users, assigneeIds, areaId);
   const statuses = await getStatuses();
   const statusId = statuses.some((status) => status.id === body.status)
     ? body.status
@@ -748,7 +795,7 @@ async function createTaskRecord(body, user, users, areas, source = null) {
   return {
     id: crypto.randomUUID(),
     title: sanitizeText(body.title, 100),
-    description: sanitizeText(body.description, 1000, false),
+    description: sanitizeText(body.description, 50000, false),
     projectType: taskProjectTypes.has(body.projectType)
       ? body.projectType
       : "kleinprojekt",
@@ -757,12 +804,14 @@ async function createTaskRecord(body, user, users, areas, source = null) {
       : "mittel",
     status: statusId,
     dueDate: null,
-    assigneeId,
+    assigneeId: assigneeIds[0] || null,
+    assigneeIds,
     areaId,
     createdBy: user.id,
     roadmap: sanitizeText(body.roadmap, 3000, false),
     notes: [],
     images: [],
+    reportMedia: [],
     source,
     createdAt: now,
     updatedAt: now
@@ -794,6 +843,14 @@ function reportMediaHasValidSignature(mimeType, buffer) {
       buffer[3] === 0xa3 &&
       buffer.subarray(0, 64).includes("webm");
   }
+  if (mimeType === "video/x-matroska") {
+    return buffer.length >= 4 &&
+      buffer[0] === 0x1a &&
+      buffer[1] === 0x45 &&
+      buffer[2] === 0xdf &&
+      buffer[3] === 0xa3 &&
+      buffer.subarray(0, 64).includes("matroska");
+  }
   if (mimeType === "video/mp4" || mimeType === "video/quicktime") {
     return buffer.length >= 12 && buffer.subarray(4, 8).toString("ascii") === "ftyp";
   }
@@ -813,7 +870,7 @@ async function receiveReportMedia(req) {
   const mimeType = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
   const config = reportMediaTypes[mimeType];
   if (!config) {
-    throw new Error("Erlaubt sind JPEG, PNG, WebP, GIF, MP4, WebM und MOV.");
+    throw new Error("Erlaubt sind JPEG, PNG, WebP, GIF, MP4, WebM, MKV und MOV.");
   }
   const declaredLength = Number(req.headers["content-length"] || 0);
   if (declaredLength > REPORT_MEDIA_MAX_BYTES) {
@@ -930,6 +987,7 @@ function withSourceStatus(record, tasks) {
   const task = record.taskId ? tasks.find((item) => item.id === record.taskId) : null;
   return {
     ...record,
+    media: normalizeMediaList(record.media),
     converted: Boolean(record.taskId),
     taskStatus: task ? task.status : null,
     taskTitle: task ? task.title : null
@@ -1397,9 +1455,9 @@ async function apiWorkspaceRoutes(req, res, url, user) {
         : users.map(publicUserLite),
       groups,
       areas,
-      tasks,
+      tasks: tasks.map(publicTask),
       ideas,
-      bugs,
+      bugs: bugs.map((bug) => ({ ...bug, media: normalizeMediaList(bug.media) })),
       changelogs,
       archivedChangelogs,
       statuses: publicStatuses(statuses),
@@ -1828,7 +1886,7 @@ async function apiAccountRoutes(req, res, url, user) {
 
   if (req.method === "GET" && url.pathname === "/api/tasks") {
     if (!requirePermission(user, "view_app", res)) return;
-    sendJson(res, 200, { tasks: await readJson("tasks") });
+    sendJson(res, 200, { tasks: (await readJson("tasks")).map(publicTask) });
     return;
   }
 
@@ -1933,7 +1991,7 @@ async function apiSourceRoutes(req, res, url, user) {
       importance: ["niedrig", "mittel", "hoch", "kritisch"].includes(body.importance)
         ? body.importance
         : "mittel",
-      media: null,
+      media: [],
       authorId: user.id,
       authorName: user.displayName,
       taskId: null,
@@ -1961,23 +2019,23 @@ async function apiSourceRoutes(req, res, url, user) {
       sendJson(res, 403, { error: "Du darfst zu diesem Bug keine Datei hochladen." });
       return;
     }
-    if (bug.media) {
-      sendJson(res, 409, { error: "Dieser Bug besitzt bereits einen Medienupload." });
+    const mediaList = normalizeMediaList(bug.media);
+    if (mediaList.length >= MAX_BUG_MEDIA) {
+      sendJson(res, 409, { error: `Dieser Bug besitzt bereits die maximale Anzahl an Medien (${MAX_BUG_MEDIA}).` });
       return;
     }
     const media = await receiveReportMedia(req);
+    const entry = { ...media, uploadedBy: user.id };
     try {
-      bug.media = {
-        ...media,
-        uploadedBy: user.id
-      };
+      mediaList.push(entry);
+      bug.media = mediaList;
       bug.updatedAt = media.uploadedAt;
       await writeJson("bugs", bugs);
     } catch (error) {
       await fsp.unlink(path.join(REPORT_UPLOAD_DIR, media.fileName)).catch(() => {});
       throw error;
     }
-    sendJson(res, 201, { media: bug.media, bug });
+    sendJson(res, 201, { media: entry, mediaList, bug });
     return;
   }
 
@@ -2008,6 +2066,11 @@ async function apiSourceRoutes(req, res, url, user) {
       type: sourceType,
       id: record.id
     });
+    // Carry the bug's uploaded images/videos onto the task so the team can see
+    // them right on the card they work from.
+    if (sourceType === "bug") {
+      task.reportMedia = normalizeMediaList(record.media);
+    }
     tasks.unshift(task);
     record.taskId = task.id;
     record.convertedBy = user.id;
@@ -2015,7 +2078,7 @@ async function apiSourceRoutes(req, res, url, user) {
     record.updatedAt = record.convertedAt;
     await writeJson("tasks", tasks);
     await writeJson(sourceCollection, records);
-    sendJson(res, 201, { task, record });
+    sendJson(res, 201, { task: publicTask(task), record: withSourceStatus(record, tasks) });
     return;
   }
 
@@ -2034,8 +2097,10 @@ async function apiSourceRoutes(req, res, url, user) {
       sendJson(res, 403, { error: "Dafür fehlen dir die notwendigen Rechte." });
       return;
     }
-    if (record.media && record.media.fileName) {
-      await fsp.unlink(path.join(REPORT_UPLOAD_DIR, record.media.fileName)).catch(() => {});
+    for (const media of normalizeMediaList(record.media)) {
+      if (media && media.fileName) {
+        await fsp.unlink(path.join(REPORT_UPLOAD_DIR, media.fileName)).catch(() => {});
+      }
     }
     records.splice(index, 1);
     await writeJson(collection, records);
@@ -2057,7 +2122,7 @@ async function apiTaskRoutes(req, res, url, user) {
     const task = await createTaskRecord(body, user, users, areas);
     tasks.unshift(task);
     await writeJson("tasks", tasks);
-    sendJson(res, 201, { task });
+    sendJson(res, 201, { task: publicTask(task) });
     return;
   }
 
@@ -2076,7 +2141,7 @@ async function apiTaskRoutes(req, res, url, user) {
       return;
     }
     if (body.action === "claim") {
-      if (task.assigneeId) {
+      if (taskAssigneeIds(task).length) {
         sendJson(res, 409, { error: "Diese Aufgabe ist bereits zugewiesen." });
         return;
       }
@@ -2088,7 +2153,7 @@ async function apiTaskRoutes(req, res, url, user) {
         sendJson(res, 403, { error: "Du gehörst nicht zum Bereich dieser Aufgabe." });
         return;
       }
-      task.assigneeId = user.id;
+      setTaskAssignees(task, [user.id]);
     } else if (body.action === "set_due_date") {
       if (!isTaskAssignee(task, user)) {
         sendJson(res, 403, { error: "Nur die zugewiesene Person darf das Fertigstellungsdatum setzen." });
@@ -2123,12 +2188,11 @@ async function apiTaskRoutes(req, res, url, user) {
       }
       const nextAreaId =
         body.areaId !== undefined ? sanitizeTaskAreaId(body.areaId, areas) : task.areaId || null;
-      const nextAssigneeId =
-        body.assigneeId !== undefined ? body.assigneeId || null : task.assigneeId || null;
-      validateTaskAssignee(users, nextAssigneeId, nextAreaId);
+      const nextAssigneeIds = normalizeAssigneeInput(body, taskAssigneeIds(task));
+      validateTaskAssignees(users, nextAssigneeIds, nextAreaId);
       if (body.title !== undefined) task.title = sanitizeText(body.title, 100);
       if (body.description !== undefined) {
-        task.description = sanitizeText(body.description, 1000, false);
+        task.description = sanitizeText(body.description, 50000, false);
       }
       if (body.roadmap !== undefined) {
         task.roadmap = sanitizeText(body.roadmap, 3000, false);
@@ -2139,11 +2203,11 @@ async function apiTaskRoutes(req, res, url, user) {
         task.status = body.status;
       }
       task.areaId = nextAreaId;
-      task.assigneeId = nextAssigneeId;
+      setTaskAssignees(task, nextAssigneeIds);
     }
     task.updatedAt = new Date().toISOString();
     await writeJson("tasks", tasks);
-    sendJson(res, 200, { task });
+    sendJson(res, 200, { task: publicTask(task) });
     return;
   }
 
@@ -2216,7 +2280,7 @@ async function apiTaskRoutes(req, res, url, user) {
     task.images.push(image);
     task.updatedAt = image.uploadedAt;
     await writeJson("tasks", tasks);
-    sendJson(res, 201, { image, task });
+    sendJson(res, 201, { image, task: publicTask(task) });
     return;
   }
 
@@ -2239,7 +2303,7 @@ async function apiTaskRoutes(req, res, url, user) {
     await deleteTaskImageFile(image);
     task.updatedAt = new Date().toISOString();
     await writeJson("tasks", tasks);
-    sendJson(res, 200, { task });
+    sendJson(res, 200, { task: publicTask(task) });
     return;
   }
 
@@ -2567,7 +2631,7 @@ async function serveReportUpload(req, url, res) {
     return;
   }
   const fileName = path.basename(decodeURIComponent(url.pathname.slice("/uploads/reports/".length)));
-  if (!/^[0-9a-f-]+\.(?:jpg|png|webp|gif|mp4|webm|mov)$/i.test(fileName)) {
+  if (!/^[0-9a-f-]+\.(?:jpg|png|webp|gif|mp4|webm|mkv|mov)$/i.test(fileName)) {
     sendJson(res, 404, { error: "Nicht gefunden." });
     return;
   }

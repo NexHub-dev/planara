@@ -799,12 +799,24 @@ function canClaimTask(task) {
   return !task.areaId || getUserAreaIds().includes(task.areaId);
 }
 
+function taskAssigneeIds(task) {
+  if (Array.isArray(task?.assigneeIds)) return [...new Set(task.assigneeIds.filter(Boolean).map(String))];
+  if (task?.assigneeId) return [String(task.assigneeId)];
+  return [];
+}
+
+function taskAssignees(task) {
+  return taskAssigneeIds(task)
+    .map((id) => getUser(id))
+    .filter(Boolean);
+}
+
 function isTaskAssignedToCurrentUser(task) {
-  if (!task?.assigneeId || !state.me) return false;
-  const assigneeId = String(task.assigneeId);
-  return [state.me.id, state.me.discordId, state.me.username]
-    .filter(Boolean)
-    .some((identifier) => String(identifier) === assigneeId);
+  if (!state.me) return false;
+  const ids = taskAssigneeIds(task);
+  if (!ids.length) return false;
+  const identifiers = [state.me.id, state.me.discordId, state.me.username].filter(Boolean).map(String);
+  return ids.some((id) => identifiers.includes(String(id)));
 }
 
 function canMoveTask(task) {
@@ -816,7 +828,7 @@ function taskMatchesScope(task) {
   if (state.taskScope === "areas") {
     return (
       isTaskAssignedToCurrentUser(task) ||
-      !task.assigneeId ||
+      !taskAssigneeIds(task).length ||
       !task.areaId ||
       getUserAreaIds().includes(task.areaId)
     );
@@ -828,7 +840,7 @@ function sortTasksForCurrentUser(tasks) {
   const priorityOrder = { kritisch: 0, hoch: 1, mittel: 2, niedrig: 3 };
   const rank = (task) => {
     if (isTaskAssignedToCurrentUser(task)) return 0;
-    if (!task.assigneeId) return 1;
+    if (!taskAssigneeIds(task).length) return 1;
     return 2;
   };
   return [...tasks].sort(
@@ -1253,7 +1265,8 @@ function iconSvg(name) {
     drag: "fa-grip-vertical",
     plus: "fa-plus",
     settings: "fa-gear",
-    rocket: "fa-rocket"
+    rocket: "fa-rocket",
+    image: "fa-image"
   };
   const cls = icons[name];
   return cls ? `<i class="fa-solid ${cls}" aria-hidden="true"></i>` : "";
@@ -1936,11 +1949,23 @@ function renderTasks() {
   `;
 }
 
+function renderAssigneeStack(task, size = "tiny") {
+  const assignees = taskAssignees(task);
+  if (!assignees.length) return "";
+  const shown = assignees.slice(0, 3);
+  const extra = assignees.length - shown.length;
+  return `<span class="assignee-stack" title="${escapeHtml(assignees.map((user) => user.displayName).join(", "))}">${shown
+    .map((user) => avatar(user, size))
+    .join("")}${extra > 0 ? `<span class="assignee-more">+${extra}</span>` : ""}</span>`;
+}
+
 function renderTaskCard(task) {
-  const assignee = getUser(task.assigneeId);
   const area = getArea(task.areaId);
   const isOwn = isTaskAssignedToCurrentUser(task);
-  const needsPerson = !task.assigneeId;
+  const needsPerson = !taskAssigneeIds(task).length;
+  const mediaCount =
+    (Array.isArray(task.images) ? task.images.length : 0) +
+    (Array.isArray(task.reportMedia) ? task.reportMedia.length : 0);
   const mayDrag = canMoveTask(task);
   return `
     <article class="task-card ${isOwn ? "task-card-own" : ""} ${needsPerson ? "task-card-open" : ""} ${mayDrag ? "task-card-draggable" : ""}" data-task-id="${task.id}" data-task-status="${task.status}" draggable="${mayDrag ? "true" : "false"}">
@@ -1962,7 +1987,10 @@ function renderTaskCard(task) {
       <h3>${escapeHtml(task.title)}</h3>
       <div class="tc-foot">
         <span class="tc-area" style="--ac:${area?.color || "#74747f"}">${escapeHtml(area?.name || t("task.general"))}</span>
-        ${assignee ? avatar(assignee, "tiny") : ""}
+        <span class="tc-foot-right">
+          ${mediaCount ? `<span class="tc-media" title="${mediaCount} ${mediaCount === 1 ? "Anhang" : "Anhänge"}">${iconSvg("image") || ""}${mediaCount}</span>` : ""}
+          ${renderAssigneeStack(task)}
+        </span>
       </div>
     </article>
   `;
@@ -1980,13 +2008,16 @@ function renderLinkedTaskStatus(record) {
   if (!task) {
     return `<span class="source-state source-state-missing"><i></i>Linked task no longer exists</span>`;
   }
-  const assignee = getUser(task.assigneeId);
+  const assignees = taskAssignees(task);
+  const assigneeLabel = assignees.length
+    ? `durch ${escapeHtml(assignees.map((user) => user.displayName).join(", "))}`
+    : "not yet assigned";
   return `
     <button class="source-task-link" type="button" data-action="view-linked-task" data-id="${task.id}">
       <span class="source-state" style="--source-color:${statusConfig[task.status].color}">
         <i></i>${statusConfig[task.status].label}
       </span>
-      <span>${assignee ? `durch ${escapeHtml(assignee.displayName)}` : "not yet assigned"}</span>
+      <span>${assigneeLabel}</span>
     </button>
   `;
 }
@@ -2061,7 +2092,7 @@ function renderBugs() {
 }
 
 function renderBugCard(bug) {
-  const media = bug.media;
+  const mediaList = Array.isArray(bug.media) ? bug.media : bug.media ? [bug.media] : [];
   return `
     <article class="source-card bug-card">
       <div class="source-card-top">
@@ -2073,21 +2104,7 @@ function renderBugCard(bug) {
       </div>
       <h2>${escapeHtml(bug.subject)}</h2>
       <p class="source-copy">${escapeHtml(bug.description)}</p>
-      ${
-        media
-          ? `<div class="report-media">
-              ${
-                media.kind === "video"
-                  ? `<video src="${escapeHtml(media.url)}" controls preload="metadata"></video>`
-                  : `<a href="${escapeHtml(media.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(media.url)}" alt="${escapeHtml(media.originalName || "Bug-Anhang")}" loading="lazy" /></a>`
-              }
-              <div>
-                <span>${escapeHtml(media.originalName || "Medienupload")}</span>
-                <small>${formatFileSize(media.size)}</small>
-              </div>
-            </div>`
-          : ""
-      }
+      ${mediaList.length ? renderMediaGrid(mediaList) : ""}
       <div class="source-card-foot">
         <div class="source-author">
           ${avatar(getUser(bug.authorId) || { displayName: bug.authorName }, "small")}
@@ -2117,6 +2134,83 @@ function formatFileSize(bytes) {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+function mediaDisplayName(media) {
+  return media.originalName || (media.kind === "video" ? "Video" : "Bild");
+}
+
+// Accepts an array (or a single legacy object / null) and renders a grid of
+// clickable thumbnails that open the lightbox.
+function renderMediaGrid(media) {
+  const items = Array.isArray(media) ? media : media ? [media] : [];
+  if (!items.length) return "";
+  return `<div class="media-grid">${items
+    .map((item) => {
+      const url = escapeHtml(item.url);
+      const name = escapeHtml(mediaDisplayName(item));
+      if (item.kind === "video") {
+        return `<button type="button" class="media-tile media-tile-video" data-media-open data-media-url="${url}" data-media-kind="video" data-media-name="${name}" title="${name}">
+            <video src="${url}#t=0.1" preload="metadata" muted playsinline tabindex="-1"></video>
+            <span class="media-tile-play" aria-hidden="true"></span>
+          </button>`;
+      }
+      return `<button type="button" class="media-tile" data-media-open data-media-url="${url}" data-media-kind="image" data-media-name="${name}" title="${name}">
+          <img src="${url}" alt="${name}" loading="lazy" />
+        </button>`;
+    })
+    .join("")}</div>`;
+}
+
+function openMediaLightbox(url, kind, name) {
+  let overlay = document.getElementById("media-lightbox");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "media-lightbox";
+    overlay.className = "media-lightbox";
+    overlay.innerHTML = `
+      <button type="button" class="media-lightbox-close" data-lightbox-close aria-label="Schließen">&times;</button>
+      <div class="media-lightbox-stage" data-lightbox-stage></div>
+      <a class="media-lightbox-download" data-lightbox-download target="_blank" rel="noopener">Herunterladen</a>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay || event.target.closest("[data-lightbox-close]")) {
+        closeMediaLightbox();
+      }
+    });
+  }
+  const stage = overlay.querySelector("[data-lightbox-stage]");
+  const download = overlay.querySelector("[data-lightbox-download]");
+  const safeUrl = escapeHtml(url);
+  const safeName = escapeHtml(name || "");
+  stage.innerHTML =
+    kind === "video"
+      ? `<video src="${safeUrl}" controls autoplay playsinline></video>`
+      : `<img src="${safeUrl}" alt="${safeName}" />`;
+  download.href = url;
+  download.setAttribute("download", name || "");
+  overlay.classList.add("open");
+  document.body.classList.add("has-lightbox");
+}
+
+function closeMediaLightbox() {
+  const overlay = document.getElementById("media-lightbox");
+  if (!overlay) return;
+  overlay.classList.remove("open");
+  const stage = overlay.querySelector("[data-lightbox-stage]");
+  if (stage) stage.innerHTML = "";
+  document.body.classList.remove("has-lightbox");
+}
+
+document.addEventListener("click", (event) => {
+  const trigger = event.target.closest("[data-media-open]");
+  if (!trigger) return;
+  event.preventDefault();
+  openMediaLightbox(trigger.dataset.mediaUrl, trigger.dataset.mediaKind, trigger.dataset.mediaName);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeMediaLightbox();
+});
 
 function renderProjectDefinitions() {
   return `
@@ -2587,15 +2681,22 @@ function renderExistingTaskImages(task) {
   `;
 }
 
-function renderTaskAssigneeOptions(areaId, selectedId = "") {
-  return state.users
-    .filter(
-      (user) =>
-        user.approved && (!areaId || getUserAreaIds(user).includes(areaId))
-    )
+function renderTaskAssigneeChecklist(areaId, selectedIds = []) {
+  const selected = new Set((selectedIds || []).map(String));
+  const options = state.users.filter(
+    (user) => user.approved && (!areaId || getUserAreaIds(user).includes(areaId))
+  );
+  if (!options.length) {
+    return `<p class="assignee-empty">Keine passenden Personen für diesen Bereich.</p>`;
+  }
+  return options
     .map(
-      (user) =>
-        `<option value="${user.id}" ${selectedId === user.id ? "selected" : ""}>${escapeHtml(user.displayName)}</option>`
+      (user) => `
+        <label class="assignee-option">
+          <input type="checkbox" name="assigneeIds" value="${user.id}" ${selected.has(String(user.id)) ? "checked" : ""} />
+          ${avatar(user, "tiny")}
+          <span>${escapeHtml(user.displayName)}</span>
+        </label>`
     )
     .join("");
 }
@@ -2645,9 +2746,9 @@ function showBugForm() {
           <label for="bug-media">Image or video <span class="optional-label">optional</span></label>
           <label class="report-upload-picker" for="bug-media">
             <span class="report-upload-icon">${iconSvg("plus")}</span>
-            <span><b>Choose file</b><small>JPEG, PNG, WebP, GIF, MP4, WebM or MOV · max 250 MB</small></span>
+            <span><b>Choose files</b><small>JPEG, PNG, WebP, GIF, MP4, WebM, MKV or MOV · up to 10 files · max 250 MB each</small></span>
           </label>
-          <input id="bug-media" class="task-image-input" name="media" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.mov" />
+          <input id="bug-media" class="task-image-input" name="media" type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime,video/x-matroska,.mov,.mkv" />
           <div class="report-file-info" data-report-file-info></div>
           <div class="report-upload-progress" data-report-upload-progress hidden>
             <div><span data-report-upload-label>Preparing upload...</span><b data-report-upload-percent>0 %</b></div>
@@ -2671,6 +2772,7 @@ function getReportMimeType(file) {
     "image/gif",
     "video/mp4",
     "video/webm",
+    "video/x-matroska",
     "video/quicktime"
   ];
   if (allowed.includes(file.type)) return file.type;
@@ -2683,13 +2785,14 @@ function getReportMimeType(file) {
     gif: "image/gif",
     mp4: "video/mp4",
     webm: "video/webm",
+    mkv: "video/x-matroska",
     mov: "video/quicktime"
   }[extension] || "";
 }
 
 function validateReportMedia(file) {
   const mimeType = getReportMimeType(file);
-  if (!mimeType) throw new Error("Erlaubt sind JPEG, PNG, WebP, GIF, MP4, WebM und MOV.");
+  if (!mimeType) throw new Error("Erlaubt sind JPEG, PNG, WebP, GIF, MP4, WebM, MKV und MOV.");
   if (file.size > 250 * 1024 * 1024) {
     throw new Error("The media upload may be at most 250 MB.");
   }
@@ -2749,7 +2852,7 @@ function showSourceTaskForm(type, record) {
         </div>
         <div class="field full">
           <label for="task-description">Beschreibung <span class="optional-label">optional</span></label>
-          <textarea id="task-description" name="description" maxlength="1000">${escapeHtml(defaultDescription)}</textarea>
+          <textarea id="task-description" name="description" maxlength="50000">${escapeHtml(defaultDescription)}</textarea>
         </div>
         <div class="field">
           <label for="task-type">Project size</label>
@@ -2779,11 +2882,11 @@ function showSourceTaskForm(type, record) {
           </select>
         </div>
         <div class="field full">
-          <label for="task-assignee">Zuweisung</label>
-          <select id="task-assignee" name="assigneeId">
-            <option value="">Open · ${taskAreaId ? "area can claim" : "anyone can claim"}</option>
-            ${renderTaskAssigneeOptions(taskAreaId)}
-          </select>
+          <label>Zuweisung <span class="optional-label">optional</span></label>
+          <div class="assignee-checklist" data-assignee-checklist>
+            ${renderTaskAssigneeChecklist(taskAreaId, [])}
+          </div>
+          <span class="field-hint">Mehrere Personen möglich. Ohne Auswahl bleibt die Aufgabe offen.</span>
         </div>
         <div class="field full">
           <label for="task-roadmap">Fahrplan / Umsetzung <span class="optional-label">optional</span></label>
@@ -2858,7 +2961,7 @@ function showTaskForm(task = null) {
         </div>
         <div class="field full">
           <label for="task-description">Beschreibung <span class="optional-label">optional</span></label>
-          <textarea id="task-description" name="description" maxlength="1000" placeholder="Goal and requirements of the task">${escapeHtml(task?.description || "")}</textarea>
+          <textarea id="task-description" name="description" maxlength="50000" placeholder="Goal and requirements of the task">${escapeHtml(task?.description || "")}</textarea>
         </div>
         <div class="field">
           <label for="task-type">Project size</label>
@@ -2897,12 +3000,11 @@ function showTaskForm(task = null) {
         ${
           canAssign
             ? `<div class="field full">
-                <label for="task-assignee">Zuweisung</label>
-                <select id="task-assignee" name="assigneeId">
-                  <option value="">Open · ${taskAreaId ? "area can claim" : "anyone can claim"}</option>
-                  ${renderTaskAssigneeOptions(taskAreaId, task?.assigneeId)}
-                </select>
-                <span class="field-hint">Only users belonging to the selected area are shown.</span>
+                <label>Zuweisung <span class="optional-label">optional</span></label>
+                <div class="assignee-checklist" data-assignee-checklist>
+                  ${renderTaskAssigneeChecklist(taskAreaId, taskAssigneeIds(task))}
+                </div>
+                <span class="field-hint">Mehrere Personen möglich. Ohne Auswahl bleibt die Aufgabe offen · nur Personen des gewählten Bereichs werden angezeigt.</span>
               </div>`
             : ""
         }
@@ -2932,7 +3034,8 @@ function showTaskForm(task = null) {
 }
 
 function showTaskDetail(task) {
-  const assignee = getUser(task.assigneeId);
+  const assignees = taskAssignees(task);
+  const hasAssignee = assignees.length > 0;
   const area = getArea(task.areaId);
   const mayEdit = hasPermission("manage_tasks");
   const maySetDueDate = isTaskAssignedToCurrentUser(task);
@@ -2940,6 +3043,8 @@ function showTaskDetail(task) {
   const maySetStatus = canMoveTask(task);
   const notes = Array.isArray(task.notes) ? [...task.notes] : [];
   const images = Array.isArray(task.images) ? task.images : [];
+  const reportMedia = Array.isArray(task.reportMedia) ? task.reportMedia : [];
+  const detailMedia = [...images, ...reportMedia];
   openModal(`
     <div>
       <div class="card-flags">
@@ -2948,24 +3053,10 @@ function showTaskDetail(task) {
         <span class="pill">${statusConfig[task.status].label}</span>
       </div>
       <h2>${escapeHtml(task.title)}</h2>
-      ${task.description ? `<p class="modal-subtitle">${escapeHtml(task.description)}</p>` : ""}
+      ${task.description ? `<p class="modal-subtitle task-detail-text">${escapeHtml(task.description)}</p>` : ""}
+      ${detailMedia.length ? renderMediaGrid(detailMedia) : ""}
       ${
-        images.length
-          ? `<div class="task-image-gallery">
-              ${images
-                .map(
-                  (image) => `
-                    <a href="${escapeHtml(image.url)}" target="_blank" rel="noopener" title="${escapeHtml(image.originalName || "Open image")}">
-                      <img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.originalName || "Aufgabenbild")}" loading="lazy" />
-                    </a>
-                  `
-                )
-                .join("")}
-            </div>`
-          : ""
-      }
-      ${
-        !assignee
+        !hasAssignee
           ? `<div class="task-needs-person"><span></span><div><strong>This task still needs an owner</strong><p>${task.areaId ? `The task is unassigned and can be claimed by members of the ${escapeHtml(area?.name || "Unknown")} area.` : "The task is unassigned and can be claimed by a team member."}</p></div></div>`
           : ""
       }
@@ -2973,17 +3064,17 @@ function showTaskDetail(task) {
         task.roadmap
           ? `<div class="task-detail-roadmap">
               <h4>Fahrplan / Umsetzung</h4>
-              <p>${escapeHtml(task.roadmap)}</p>
+              <p class="task-detail-text">${escapeHtml(task.roadmap)}</p>
             </div>`
           : ""
       }
       <div class="form-grid">
         <div class="field"><label>Fertigstellungsdatum</label><div>${task.dueDate ? formatDate(task.dueDate, { year: "numeric" }) : "Noch nicht angegeben"}</div></div>
-        <div class="field"><label>Assignee</label><div>${assignee ? escapeHtml(assignee.displayName) : "Noch nicht zugewiesen"}</div></div>
+        <div class="field"><label>${assignees.length > 1 ? "Zugewiesen an" : "Assignee"}</label><div>${hasAssignee ? escapeHtml(assignees.map((user) => user.displayName).join(", ")) : "Noch nicht zugewiesen"}</div></div>
         <div class="field"><label>Area</label><div><span class="area-badge" style="--area-color:${area?.color || "#74747f"}"><i></i>${escapeHtml(area?.name || "Allgemein")}</span></div></div>
       </div>
       ${
-        !assignee && task.areaId && !canClaimTask(task)
+        !hasAssignee && task.areaId && !canClaimTask(task)
           ? `<div class="task-area-warning">You can see this open task, but only members of the „${escapeHtml(area?.name || "Unknown")}“ area may claim it.</div>`
           : ""
       }
@@ -3019,7 +3110,7 @@ function showTaskDetail(task) {
             : ""
         }
         ${
-          !assignee && hasPermission("claim_task") && canClaimTask(task)
+          !hasAssignee && hasPermission("claim_task") && canClaimTask(task)
             ? `<button class="button secondary" data-action="claim-task" data-id="${task.id}">Claim task</button>`
             : ""
         }
@@ -3883,13 +3974,12 @@ document.addEventListener("change", (event) => {
   }
   if (event.target.matches("#user-group")) renderPermissionPreview();
   if (event.target.matches("#task-area")) {
-    const assigneeSelect = document.querySelector("#task-assignee");
-    if (assigneeSelect) {
-      const selectedId = assigneeSelect.value;
-      assigneeSelect.innerHTML = `
-        <option value="">Open · ${event.target.value ? "area can claim" : "anyone can claim"}</option>
-        ${renderTaskAssigneeOptions(event.target.value, selectedId)}
-      `;
+    const checklist = document.querySelector("[data-assignee-checklist]");
+    if (checklist) {
+      const selected = [...checklist.querySelectorAll('input[name="assigneeIds"]:checked')].map(
+        (input) => input.value
+      );
+      checklist.innerHTML = renderTaskAssigneeChecklist(event.target.value, selected);
     }
   }
   if (event.target.matches("#task-images")) {
@@ -3933,18 +4023,23 @@ document.addEventListener("change", (event) => {
   if (event.target.matches("#bug-media")) {
     const input = event.target;
     const info = document.querySelector("[data-report-file-info]");
-    const file = input.files[0];
-    if (!file) {
+    const files = [...input.files];
+    if (!files.length) {
       if (info) info.innerHTML = "";
       return;
     }
     try {
-      validateReportMedia(file);
+      if (files.length > 10) throw new Error("Höchstens 10 Dateien pro Bug.");
+      files.forEach(validateReportMedia);
       if (info) {
-        info.innerHTML = `
+        info.innerHTML = files
+          .map(
+            (file) => `
           <span>${escapeHtml(file.name)}</span>
           <small>${formatFileSize(file.size)}</small>
-        `;
+        `
+          )
+          .join("");
       }
     } catch (error) {
       input.value = "";
@@ -3997,10 +4092,12 @@ document.addEventListener("submit", async (event) => {
       if (existingImageCount - removeImageIds.length + imageFiles.length > 5) {
         throw new Error("A task can have at most five images.");
       }
+      values.assigneeIds = formData.getAll("assigneeIds");
       const taskId = values.taskId;
       delete values.taskId;
       delete values.images;
       delete values.removeImageIds;
+      delete values.assigneeId;
       const result = await api(taskId ? `/api/tasks/${taskId}` : "/api/tasks", {
         method: taskId ? "PATCH" : "POST",
         body: JSON.stringify(values)
@@ -4027,7 +4124,7 @@ document.addEventListener("submit", async (event) => {
       toast("Idea was submitted.");
     } else if (form.id === "bug-form") {
       const formData = new FormData(form);
-      const media = formData.get("media");
+      const mediaFiles = formData.getAll("media").filter((file) => file instanceof File && file.size);
       const result = await api("/api/bugs", {
         method: "POST",
         body: JSON.stringify({
@@ -4036,35 +4133,42 @@ document.addEventListener("submit", async (event) => {
           importance: values.importance
         })
       });
+      let uploadedCount = 0;
       let uploadError = null;
-      if (media instanceof File && media.size) {
+      if (mediaFiles.length) {
         const progress = form.querySelector("[data-report-upload-progress]");
         const progressBar = progress?.querySelector("progress");
         const percent = progress?.querySelector("[data-report-upload-percent]");
         const label = progress?.querySelector("[data-report-upload-label]");
         if (progress) progress.hidden = false;
-        if (label) label.textContent = "Image or video is uploading...";
-        try {
-          await uploadBugMedia(result.bug.id, media, (value) => {
-            if (progressBar) progressBar.value = value;
-            if (percent) percent.textContent = `${value} %`;
-          });
-        } catch (error) {
-          uploadError = error;
+        for (let index = 0; index < mediaFiles.length; index += 1) {
+          if (label) label.textContent = `Datei ${index + 1}/${mediaFiles.length} wird hochgeladen...`;
+          try {
+            await uploadBugMedia(result.bug.id, mediaFiles[index], (value) => {
+              if (progressBar) progressBar.value = value;
+              if (percent) percent.textContent = `${value} %`;
+            });
+            uploadedCount += 1;
+          } catch (error) {
+            uploadError = error;
+            break;
+          }
         }
       }
       closeModal();
       await refreshData();
       if (uploadError) {
-        toast(`Bug wurde gespeichert, aber der Anhang nicht: ${uploadError.message}`, "error");
+        toast(`Bug gespeichert, aber ein Anhang nicht (${uploadedCount}/${mediaFiles.length}): ${uploadError.message}`, "error");
       } else {
         toast("Bug report was submitted.");
       }
     } else if (form.id === "source-task-form") {
       const sourceType = values.sourceType;
       const sourceId = values.sourceId;
+      values.assigneeIds = new FormData(form).getAll("assigneeIds");
       delete values.sourceType;
       delete values.sourceId;
+      delete values.assigneeId;
       await api(`/api/${sourceType === "idea" ? "ideas" : "bugs"}/${sourceId}/convert`, {
         method: "POST",
         body: JSON.stringify(values)
